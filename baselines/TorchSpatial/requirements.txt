@@ -1,0 +1,8 @@
+# Difference from the original TorchSpatial repo
+numpy==2.4.0
+pandas==2.3.3
+torchvision==0.24.0
+scipy==1.16.2
+matplotlib==3.10.8
+torch==2.9
+scikit_learn==1.8.0
