@@ -7,24 +7,37 @@ from torch.optim import Adam
 
 from sklearn.model_selection import train_test_split
 
-from TorchSpatial.modules.trainer import train, forward_with_np_array
+from TorchSpatial.modules.trainer import train, train_debias , forward_with_np_array
 from TorchSpatial.modules.encoder_selector import get_loc_encoder
 from TorchSpatial.modules.models import ThreeLayerMLP
 import TorchSpatial.utils.datasets as data_import
 import TorchSpatial.utils.eval_helper as eval_helper
 
+from gbsloss import SSIPartitioner, BinaryPerformanceTransformer, LogOddsPerformanceTransformer, SSILoss
+
 from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import torch
+import numpy as np
 
-def main():
+def main(
+    dataset = "birdsnap",
+    load_model = False,
+    train_model = True,
+    debias = False,
+    debias_radius = 0.1,
+    debias_lambda = 0.001,
+    total_epochs = 3,
+    epochs = 3
+):
 
-    dataset = "mosaiks_elevation" # birdsnap and mosaiks_elevation work
-    load_model = True
-    train_model = True
-    total_epochs = 3 # must always keep it correct for correct naming. 0 for new model, 3 for model that has been trained for 3 epochs, etc. The amount of epochs for which your model has already been trained. 
-    epochs = 3 # only need to be kept correct if train_model is True. The amount of (additional) epochs for which you train your model by running this script
+    # dataset = "birdsnap" # birdsnap and mosaiks_elevation work
+    # load_model = False
+    # train_model = True
+    # total_epochs = 3 # must always keep it correct for correct naming. 0 for new model, 3 for model that has been trained for 3 epochs, etc. The amount of epochs for which your model has already been trained.
+    # epochs = 3 # only need to be kept correct if train_model is True. The amount of (additional) epochs for which you train your model by running this script
 
     # - import dataset
     settings = {"birdsnap":
@@ -50,7 +63,7 @@ def main():
 
     eval_split = "test"
 
-    device = "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     coord_dim = 2 #lonlat
     img_dim = loc_dim = embed_dim = 2048 # embedding dim
     batch_size = 32
@@ -109,14 +122,19 @@ def main():
         y_tr = (y_tr_orig - y_mean) / y_std
         y_te = (y_te_orig - y_mean) / y_std
 
-    train_data_zip = list(zip(img_tr, loc_tr, y_tr))
-    test_data_zip  = list(zip(img_te, loc_te, y_te))
+    idx_tr = np.arange(img_tr.shape[0])
+    idx_te = np.arange(img_te.shape[0])
+
+    train_data_zip = list(zip(idx_tr, img_tr, loc_tr, y_tr))
+    test_data_zip = list(zip(idx_te, img_te, loc_te, y_te))
+
+    print("Check the radian of input data!", loc_tr[0])
 
     # - Dataloader (loads image embeddings)
     train_loader = DataLoader(train_data_zip, batch_size=batch_size, shuffle=True)
     test_loader  = DataLoader(test_data_zip, batch_size=batch_size, shuffle=False)
-    first_batch = next(iter(test_loader))
-    img_b, loc_b, y_b = first_batch
+    # first_batch = next(iter(test_loader))
+    # img_b, loc_b, y_b = first_batch
 
     # - location encoder
     loc_encoder = get_loc_encoder(name = loc_encoder_name, overrides = loc_encoder_params).to(device) # "device": device is needed if you defined device = 'cpu' above and don't have cuda setup to prevent "AssertionError: Torch not compiled with CUDA enabled", because the default is device="cuda"
@@ -153,19 +171,59 @@ def main():
     loc_encoder.train()
     decoder.train()
 
+    ### Initialize gbs loss meta
+    debias_loss = SSILoss()
+
+    lats, lons = np.radians(loc_tr[:,1]), np.radians(loc_tr[:,0])
+    partitioner = SSIPartitioner(np.array([lats, lons]).T, k=100, radius=debias_radius)
+
+    # perf_transformer = LogOddsPerformanceTransformer(num_classes, scale=10)
+    perf_transformer = BinaryPerformanceTransformer(thres=0.9)
+
     if train_model:
-        # - train() 
-        train(task = task,
+        # - train()
+        train(task=task,
+              epochs=epochs,
+              batch_count_print_avg_loss=30,
+              loc_encoder=loc_encoder,
+              dataloader=train_loader,
+              decoder=decoder,
+              criterion=criterion,
+              optimizer=optimizer,
+              scheduler=scheduler,
+              device=device)
+
+        total_epochs += epochs
+
+        # - debias train
+        if debias:
+            train_debias(task = task,
                 epochs = epochs, 
                 batch_count_print_avg_loss = 30,
                 loc_encoder = loc_encoder,
                 dataloader = train_loader,
                 decoder = decoder,
                 criterion = criterion,
+                debias_loss = debias_loss,
+                debias_lambda = debias_lambda,
+                partitioner = partitioner,
+                perf_transformer = perf_transformer,
                 optimizer = optimizer,
                 scheduler = scheduler,
                 device = device)
-        total_epochs += epochs
+        else:
+            train(task=task,
+                  epochs=epochs,
+                  batch_count_print_avg_loss=30,
+                  loc_encoder=loc_encoder,
+                  dataloader=train_loader,
+                  decoder=decoder,
+                  criterion=criterion,
+                  optimizer=optimizer,
+                  scheduler=scheduler,
+                  device=device)
+
+            total_epochs += epochs
 
     # - save model
     model_path = f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_{total_epochs}epochs.pth.tar"
@@ -206,9 +264,15 @@ def main():
     rows = []
     sample_id = 0
 
+    total_ssi = 0.
 
     with torch.no_grad():
-        for img_b, loc_b, y_b in test_loader:
+
+        lats, lons = np.radians(loc_te[:, 1]), np.radians(loc_te[:, 0])
+        partitioner = SSIPartitioner(np.array([lats, lons]).T, k=100, radius=debias_radius)
+        perf_transformer = BinaryPerformanceTransformer(thres=0.9)
+
+        for idx_b, img_b, loc_b, y_b in test_loader:
 
             img_b, loc_b, y_b = img_b.to(device), loc_b.to(device), y_b.to(device)
 
@@ -261,6 +325,28 @@ def main():
                         "hit@3": int(hit_at_3[i].item()),
                     })
                     sample_id += 1
+
+                ### SSI evaluation
+                for idx in idx_b:
+                    neighborhood_idx = partitioner.get_neighborhood_idx(idx.item())
+                    if neighborhood_idx.shape[0] < 10:
+                        continue
+
+                    neighborhood_points = partitioner.get_neighborhood_points(idx.item())
+
+                    img_n, loc_n, y_n = (torch.stack([test_loader.dataset[i][1].to(device) for i in neighborhood_idx]),
+                                         torch.stack([test_loader.dataset[i][2].to(device) for i in neighborhood_idx]),
+                                         torch.stack([test_loader.dataset[i][3].to(device) for i in neighborhood_idx]))
+
+                    img_embedding = img_n
+                    loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
+
+                    loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
+                    logits = decoder(loc_img_interaction_embedding)
+
+                    neighborhood_values = perf_transformer(logits, y_n)
+
+                    total_ssi += debias_loss(neighborhood_points, neighborhood_values)[0].item()
             
             elif task == "Regression":
                 loc_img_concat_embedding = torch.cat((loc_embedding, img_embedding), dim = 1)
@@ -303,10 +389,12 @@ def main():
         top1_acc = 100.0 * correct_top1 / total if total else 0.0
         top3_acc = 100.0 * correct_top3 / total if total else 0.0
         mrr = rr_sum / total if total else 0.0
+        ssi = total_ssi / total if total else 0.0
 
         print(f"Top-1 Accuracy on {total} test images: {top1_acc:.2f}%")
         print(f"Top-3 Accuracy on {total} test images: {top3_acc:.2f}%")
         print(f"MRR on {total} test images: {mrr:.4f}")
+        print(f"SSI score on {total} test images: {ssi:.4f}")
     elif task == "Regression":
         rmse = (sse / total) ** 0.5
         mae = sae / total
@@ -321,4 +409,11 @@ def main():
     
 
 if __name__ == "__main__":
-    main()
+    main(dataset = "birdsnap",
+        load_model = False,
+        train_model = True,
+        debias = True,
+        debias_radius = 0.01,
+        debias_lambda = 0.0001,
+        total_epochs = 0,
+        epochs = 3)
