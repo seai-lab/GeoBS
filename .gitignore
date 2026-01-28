@@ -16,3 +16,10 @@ baselines/TorchSpatial/venv
 *.npz
 results/
 .idea/
+*.json
+*.log
+*.csv
+*.tar
+*.bak
+baselines/configs.json.bak
+baselines/configs.json

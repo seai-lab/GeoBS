@@ -4,8 +4,8 @@
     "load_model": false,
     "trained_epochs": 0,
     "debiased_epochs": 0,
-    "epochs_to_train": 50,
-    "epochs_to_debias": 10,
+    "epochs_to_train": 2,
+    "epochs_to_debias": 1,
 
     "debias_radius": 0.01,
     "debias_lambda": 0.0001,
@@ -21,7 +21,7 @@
     "scheduler_threshold": 1e-4,
 
     "SSIPartitioner_k": 100,
-    "BinaryPerformanceTransformer_thres":0.9,
+    "BinaryPerformanceTransformer_thres":0.7,
 
     "birdsnap":
     {"params": {"dataset": "birdsnap", "meta_type": "orig_meta", "regress_dataset": []},
