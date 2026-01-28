@@ -27,7 +27,7 @@ import json
 def main():
 
     # - import configs
-    with open("configs.json", "r") as f:
+    with open("baselines/configs.json", "r") as f:
         settings = json.load(f)
 
     dataset = settings["dataset"]
@@ -296,7 +296,9 @@ def main():
                 total_ssi += debias_loss(neighborhood_points, neighborhood_values)[0].item()
 
     df = pd.DataFrame(rows)
-    df.to_csv(f"TorchSpatial/eval_results/{task.lower()}/eval_{dataset}_{meta_type}_{eval_split}_{loc_encoder_name}__trained{trained_epochs}_debiased{debiased_epochs}.csv", index=True)
+    csv_path = f"TorchSpatial/eval_results/{task.lower()}/eval_{dataset}_{meta_type}_{eval_split}_{loc_encoder_name}__trained{trained_epochs}_debiased{debiased_epochs}.csv"
+    Path(csv_path).parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(csv_path, index=True)
 
     # Separate block because need to use total
     top1_acc = 100.0 * correct_top1 / total if total else 0.0
