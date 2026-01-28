@@ -64,6 +64,10 @@ def main():
     eval_remove_invalid = settings[dataset]["eval_remove_invalid"]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda")
+    # print(f"Current device: {device}")
+    if torch.cuda.is_available():
+        print(f"GPU Name: {torch.cuda.get_device_name(0)}")
 
     loc_dim = img_dim
     
@@ -100,8 +104,8 @@ def main():
     print("Check the radian of input data!", loc_tr[0])
 
     # - Dataloader (loads image embeddings)
-    train_loader = DataLoader(train_data_zip, batch_size=batch_size, shuffle=True)
-    test_loader  = DataLoader(test_data_zip, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_data_zip, batch_size=batch_size, shuffle=True, num_workers=8)
+    test_loader  = DataLoader(test_data_zip, batch_size=batch_size, shuffle=False, num_workers=8)
 
     # - location encoder
     loc_encoder = get_loc_encoder(name = loc_encoder_name, overrides = loc_encoder_params).to(device) # "device": device is needed if you defined device = 'cpu' above and don't have cuda setup to prevent "AssertionError: Torch not compiled with CUDA enabled", because the default is device="cuda"

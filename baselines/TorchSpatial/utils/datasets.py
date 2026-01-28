@@ -44,6 +44,7 @@ def load_dataset(
                 train_remove_invalid,
             )
         )
+        eval_split = "val" # force to be val for inat_2017
         if eval_split == "val":
             val_locs, val_classes, val_users, val_dates, val_inds = load_inat_data(
                 data_dir,
