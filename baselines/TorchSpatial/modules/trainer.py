@@ -118,7 +118,6 @@ def train_debias(task,
                         continue
 
                     neighborhood_points = partitioner.get_neighborhood_points(idx.item())
-                    # background_points = partitioner.get_background_points(idx.item())
 
                     img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
                                          torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
@@ -131,18 +130,12 @@ def train_debias(task,
                     logits = decoder(loc_img_interaction_embedding)
 
                     neighborhood_values = perf_transformer(logits, y_n)
-                    # background_values = torch.zeros(background_points.shape[0])
-
-                    # points = np.concatenate([neighborhood_points, background_points], axis=0)
-                    # values = torch.cat([neighborhood_values, background_values])
+                    if np.unique(neighborhood_values.tolist()).shape[0] < 2:
+                        continue
 
                     gbs_losses.append(debias_loss(neighborhood_points, neighborhood_values)[0])
 
-                    # gbs_losses.append(debias_loss(points, values)[0])
-
                 gbs_loss = torch.mean(torch.stack(gbs_losses))
-                # print("Original Loss: {}, GBS Loss: {}".format(loss.item(), gbs_loss.item()))
-
                 loss += debias_lambda * gbs_loss
 
             elif task == "Regression":
