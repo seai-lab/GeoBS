@@ -13,3 +13,4 @@ gbs/ssi/__pycache__/utils.cpython-312.pyc
 *.npy
 *.npz
 results/
+.idea/
