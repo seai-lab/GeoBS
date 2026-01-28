@@ -152,8 +152,7 @@ def main():
     # - perf_transformer
     perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
 
-    train(task=task,
-        epochs=epochs_to_train,
+    train(epochs=epochs_to_train,
         batch_count_print_avg_loss=batch_count_print_avg_loss,
         loc_encoder=loc_encoder,
         dataloader=train_loader,
@@ -168,8 +167,7 @@ def main():
         epochs_order.append(("train", epochs_to_train))
 
     # - debias
-    train_debias(task = task,
-        epochs = epochs_to_debias, 
+    train_debias(epochs = epochs_to_debias,
         batch_count_print_avg_loss = batch_count_print_avg_loss,
         loc_encoder = loc_encoder,
         dataloader = train_loader,

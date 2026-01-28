@@ -9,16 +9,15 @@ def forward_with_np_array(batch_data, model):
     loc_embedding = torch.squeeze(model(coords = loc_b))
     return loc_embedding
 
-def train(task,
-            epochs, 
-            batch_count_print_avg_loss,
-            dataloader,
-            loc_encoder,
-            decoder,
-            criterion,
-            optimizer, 
-            scheduler,
-            device):
+def train(epochs,
+          batch_count_print_avg_loss,
+          dataloader,
+          loc_encoder,
+          decoder,
+          criterion,
+          optimizer,
+          scheduler,
+          device):
     
     print(f'Training for {epochs} epochs.')
     decoder = decoder.to(device)
@@ -39,18 +38,11 @@ def train(task,
             img_embedding = img_b
             loc_embedding = forward_with_np_array(batch_data = loc_b, model = loc_encoder)
 
-            if task == "Classification":
-                loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
-                logits = decoder(loc_img_interaction_embedding)
-        
-                loss = criterion(logits, y_b)
 
-            elif task == "Regression":
-                loc_img_concat_embedding = torch.cat((loc_embedding, img_embedding), dim=1)
+            loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
+            logits = decoder(loc_img_interaction_embedding)
 
-                yhat = decoder(loc_img_concat_embedding).squeeze(-1)
-
-                loss = criterion(yhat, y_b) # training on standardized yhat
+            loss = criterion(logits, y_b)
             
             running_loss += loss.item()
 
@@ -71,8 +63,7 @@ def train(task,
 
     print(f'Training Completed.')
 
-def train_debias(task,
-          epochs,
+def train_debias(epochs,
           batch_count_print_avg_loss,
           dataloader,
           loc_encoder,
@@ -85,6 +76,7 @@ def train_debias(task,
           optimizer,
           scheduler,
           device):
+
     print(f'Debiasing for {epochs} epochs.')
     decoder = decoder.to(device)
 
@@ -104,47 +96,40 @@ def train_debias(task,
             img_embedding = img_b
             loc_embedding = forward_with_np_array(batch_data=loc_b, model=loc_encoder)
 
-            if task == "Classification":
+
+            loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
+            logits = decoder(loc_img_interaction_embedding)
+
+            loss = criterion(logits, y_b)
+
+            gbs_losses = []
+
+            for idx in idx_b:
+                neighborhood_idx = partitioner.get_neighborhood_idx(idx.item())
+                if neighborhood_idx.shape[0] < 10:
+                    continue
+
+                neighborhood_points = partitioner.get_neighborhood_points(idx.item())
+
+                img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
+                                     torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
+                                     torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
+
+                img_embedding = img_n
+                loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
+
                 loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
                 logits = decoder(loc_img_interaction_embedding)
 
-                loss = criterion(logits, y_b)
+                neighborhood_values = perf_transformer(logits, y_n)
+                if np.unique(neighborhood_values.tolist()).shape[0] < 2:
+                    continue
 
-                gbs_losses = []
+                gbs_losses.append(debias_loss(neighborhood_points, neighborhood_values)[0])
 
-                for idx in idx_b:
-                    neighborhood_idx = partitioner.get_neighborhood_idx(idx.item())
-                    if neighborhood_idx.shape[0] < 10:
-                        continue
-
-                    neighborhood_points = partitioner.get_neighborhood_points(idx.item())
-
-                    img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
-                                         torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
-                                         torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
-
-                    img_embedding = img_n
-                    loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
-
-                    loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
-                    logits = decoder(loc_img_interaction_embedding)
-
-                    neighborhood_values = perf_transformer(logits, y_n)
-                    if np.unique(neighborhood_values.tolist()).shape[0] < 2:
-                        continue
-
-                    gbs_losses.append(debias_loss(neighborhood_points, neighborhood_values)[0])
-
+            if len(gbs_losses) > 0:
                 gbs_loss = torch.mean(torch.stack(gbs_losses))
-
                 loss += debias_lambda * gbs_loss
-
-            elif task == "Regression":
-                loc_img_concat_embedding = torch.cat((loc_embedding, img_embedding), dim=1)
-
-                yhat = decoder(loc_img_concat_embedding).squeeze(-1)
-
-                loss = criterion(yhat, y_b)  # training on standardized yhat
 
             running_loss += loss.item()
 
