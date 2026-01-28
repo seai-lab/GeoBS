@@ -315,8 +315,9 @@ class SSILoss(nn.Module):
 
         loc, scale = self.analytical_surprisal.fit(cs, ns, weight_matrix, ignores)
 
-        w_map = torch.from_numpy(weight_matrix)
-        X = values.flatten().reshape((1, -1)) - torch.mean(values)
+        w_map = torch.from_numpy(weight_matrix).to(device=values.device, dtype=values.dtype) #w_map = torch.from_numpy(weight_matrix)
+
+        X = values.flatten().reshape((1, -1)) - torch.mean(values) #X = values.flatten().reshape((1, -1)) - torch.mean(values)
 
         Y = torch.matmul(w_map, X.T)
 

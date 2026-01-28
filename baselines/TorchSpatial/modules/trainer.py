@@ -4,8 +4,8 @@ import numpy as np
 # Some models like the included location encoders only supports list or np.ndarray
 # Coerce datatype from torch.Tensor to np.ndarray briefly, then turn it back after processing
 def forward_with_np_array(batch_data, model):
-    loc_b = np.array(batch_data)
-    loc_b = np.expand_dims(batch_data, axis=1)
+    loc_b = batch_data.detach().cpu().numpy() #loc_b = np.array(batch_data)
+    loc_b = np.expand_dims(loc_b, axis=1) #loc_b = np.expand_dims(batch_data, axis=1)
     loc_embedding = torch.squeeze(model(coords = loc_b))
     return loc_embedding
 
@@ -170,4 +170,4 @@ def train_debias(task,
         print(f"epoch {epoch + 1} mean loss: {epoch_loss / n:.4f}")
         scheduler.step(epoch_loss / n)
 
-    print(f'Training Completed.')
+    print(f'Debiasing Completed.')

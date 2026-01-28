@@ -7,13 +7,30 @@ import pandas as pd
 import numpy as np
 
 class ThreeLayerMLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, category_count):
+    def __init__(self, input_dim, hidden_dim, category_count, activation_func):
         super().__init__()
+        activation_funcs = { 
+            "ReLU": nn.ReLU(inplace=True),
+            "LeakyReLU": nn.LeakyReLU(negative_slope=0.01, inplace=True),
+            "PReLU": nn.PReLU(),                      
+            "ELU": nn.ELU(alpha=1.0, inplace=True),
+            "SELU": nn.SELU(inplace=True),
+            "GELU": nn.GELU(),                         
+            "SiLU": nn.SiLU(inplace=True),             
+            "Mish": nn.Mish(),
+
+            "Sigmoid": nn.Sigmoid(),
+            "Tanh": nn.Tanh(),
+            "Hardtanh": nn.Hardtanh(),
+        }
+        
+        act = activation_funcs[activation_func]
+
         self.model = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(inplace = True),
+            act,
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(inplace = True),
+            act,
             nn.Linear(hidden_dim, category_count)
         )
 
