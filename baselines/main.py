@@ -148,8 +148,7 @@ def main():
     # - perf_transformer
     perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
 
-    train(task=task,
-        epochs=epochs_to_train,
+    train(epochs=epochs_to_train,
         batch_count_print_avg_loss=batch_count_print_avg_loss,
         loc_encoder=loc_encoder,
         dataloader=train_loader,
@@ -164,8 +163,7 @@ def main():
         epochs_order.append(("train", epochs_to_train))
 
     # - debias
-    train_debias(task = task,
-        epochs = epochs_to_debias, 
+    train_debias(epochs = epochs_to_debias,
         batch_count_print_avg_loss = batch_count_print_avg_loss,
         loc_encoder = loc_encoder,
         dataloader = train_loader,
@@ -296,7 +294,7 @@ def main():
                 total_ssi += debias_loss(neighborhood_points, neighborhood_values)[0].item()
 
     df = pd.DataFrame(rows)
-    df.to_csv(f"TorchSpatial/eval_results/{task.lower()}/eval_{dataset}_{meta_type}_{eval_split}_{loc_encoder_name}__trained{trained_epochs}_debiased{debiased_epochs}.csv", index=True)
+    df.to_csv(f"TorchSpatial/eval_results/eval_{dataset}_{meta_type}_{eval_split}_{loc_encoder_name}_trained-{trained_epochs}_debiased-{debiased_epochs}.csv", index=True)
 
     # Separate block because need to use total
     top1_acc = 100.0 * correct_top1 / total if total else 0.0
