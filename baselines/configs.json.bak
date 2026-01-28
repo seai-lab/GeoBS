@@ -1,80 +1,104 @@
 {
-    "dataset": "inat_2017",
+    "dataset": "nabirds",
     "eval_split": "test",
     "load_model": false,
     "trained_epochs": 0,
     "debiased_epochs": 0,
-    "epochs_to_train": 2,
-    "epochs_to_debias": 1,
-
+    "epochs_to_train": 50,
+    "epochs_to_debias": 2,
     "debias_radius": 0.01,
     "debias_lambda": 0.0001,
-    
-    "loc_encoder_name": "Space2Vec-grid",
-    "loc_encoder_params": {"spa_embed_dim": 2048, "coord_dim": 2},
+    "loc_encoder_name": "xyz",
+    "loc_encoder_params": {
+        "spa_embed_dim": 2048,
+        "coord_dim": 2
+    },
     "batch_size": 32,
     "batch_count_print_avg_loss": 30,
     "decoder_hidden_dim": 1024,
-    "activation_func": "LeakyReLU", 
-
-    "optimizer_lr": 1e-3,
-    "scheduler_threshold": 1e-4,
-
+    "activation_func": "LeakyReLU",
+    "optimizer_lr": 0.001,
+    "scheduler_threshold": 0.0001,
     "SSIPartitioner_k": 100,
-    "BinaryPerformanceTransformer_thres":0.7,
-
-    "birdsnap":
-    {"params": {"dataset": "birdsnap", "meta_type": "orig_meta", "regress_dataset": []},
+    "BinaryPerformanceTransformer_thres": 0.7,
+    "birdsnap": {
+        "params": {
+            "dataset": "birdsnap",
+            "meta_type": "orig_meta",
+            "regress_dataset": []
+        },
         "task": "Classification",
         "img_dim": 2048,
         "coord_dim": 2,
         "num_classes": 500,
         "train_remove_invalid": true,
-        "eval_remove_invalid": true},
-    "nabirds":
-    {"params": {"dataset": "nabirds", "meta_type": "ebird_meta", "regress_dataset": []},
+        "eval_remove_invalid": true
+    },
+    "nabirds": {
+        "params": {
+            "dataset": "nabirds",
+            "meta_type": "ebird_meta",
+            "regress_dataset": []
+        },
         "task": "Classification",
         "img_dim": 2048,
         "coord_dim": 2,
         "num_classes": 555,
         "train_remove_invalid": true,
-        "eval_remove_invalid": true},    
-    "inat_2017":
-    {"params": {"dataset": "inat_2017", "inat2018_resolution": "standard", "regress_dataset": []},
+        "eval_remove_invalid": true
+    },
+    "inat_2017": {
+        "params": {
+            "dataset": "inat_2017",
+            "inat2018_resolution": "standard",
+            "regress_dataset": []
+        },
         "task": "Classification",
         "img_dim": 2048,
         "coord_dim": 2,
         "num_classes": 5089,
         "train_remove_invalid": true,
-        "eval_remove_invalid": true},
-    "inat_2018":
-    {"params": {"dataset": "inat_2018", "load_img": true, "cnn_pred_type": "full", "cnn_model": "inception_v3", "regress_dataset": []},
+        "eval_remove_invalid": true
+    },
+    "inat_2018": {
+        "params": {
+            "dataset": "inat_2018",
+            "load_img": true,
+            "cnn_pred_type": "full",
+            "cnn_model": "inception_v3",
+            "regress_dataset": []
+        },
         "task": "Classification",
         "img_dim": 2048,
         "coord_dim": 2,
         "num_classes": 8142,
         "train_remove_invalid": true,
-        "eval_remove_invalid": true},
-    "fmow":
-    {"params": {"dataset": "fmow", "cnn_pred_type": "full", "meta_type": "orig_meta", "regress_dataset": []},
+        "eval_remove_invalid": true
+    },
+    "fmow": {
+        "params": {
+            "dataset": "fmow",
+            "cnn_pred_type": "full",
+            "meta_type": "orig_meta",
+            "regress_dataset": []
+        },
         "task": "Classification",
         "img_dim": 2048,
         "coord_dim": 2,
         "num_classes": 62,
         "train_remove_invalid": true,
-        "eval_remove_invalid": true},
-    "yfcc":
-    {"params": {"dataset": "yfcc", "regress_dataset": []},
+        "eval_remove_invalid": true
+    },
+    "yfcc": {
+        "params": {
+            "dataset": "yfcc",
+            "regress_dataset": []
+        },
         "task": "Classification",
         "img_dim": 2048,
         "coord_dim": 2,
         "num_classes": 100,
         "train_remove_invalid": true,
-        "eval_remove_invalid": true}
+        "eval_remove_invalid": true
+    }
 }
-
-
-
-
-
-

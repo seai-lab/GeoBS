@@ -18,17 +18,23 @@ DATASETS=(
 # Models that can run without extra encoder params in configs.json
 # (rbf/wrap/wrap_ffn/tile_ffn/Naive need extra params; omitted by request)
 MODELS=(
-  "Siren(SH)"
-  "xyz"
-  "rff"
-  "Space2Vec-grid"
+  # "Siren(SH)"
+  # "xyz"
+  # # "rff"
+  # "Space2Vec-grid"
+  # "Space2Vec-theory"
+  # "NeRF"
+  # "Sphere2Vec-sphereC"
+  # "Sphere2Vec-sphereM"
+  # "Sphere2Vec-sphereC+"
+  # "Sphere2Vec-sphereM+"
+  # "Sphere2Vec-dfs"
   "Space2Vec-theory"
-  "NeRF"
   "Sphere2Vec-sphereC"
-  "Sphere2Vec-sphereM"
-  "Sphere2Vec-sphereC+"
-  "Sphere2Vec-sphereM+"
-  "Sphere2Vec-dfs"
+  "NeRF"
+  "rbf"
+  "Siren(SH)"
+  "Space2Vec-sphere"
 )
 
 BACKUP="${CONFIG}.bak"

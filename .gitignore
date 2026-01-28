@@ -22,4 +22,5 @@ results/
 *.tar
 *.bak
 baselines/configs.json.bak
-baselines/configs.json
+baselines/*.json
+
