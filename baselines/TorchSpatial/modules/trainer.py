@@ -20,6 +20,7 @@ def train(task,
             scheduler,
             device):
     
+    print(f'Training for {epochs} epochs.')
     decoder = decoder.to(device)
 
     for epoch in range(epochs):
@@ -68,8 +69,6 @@ def train(task,
         print(f"epoch {epoch+1} mean loss: {epoch_loss/n:.4f}")
         scheduler.step(epoch_loss/n)
 
-        
-
     print(f'Training Completed.')
 
 def train_debias(task,
@@ -86,6 +85,7 @@ def train_debias(task,
           optimizer,
           scheduler,
           device):
+    print(f'Debiasing for {epochs} epochs.')
     decoder = decoder.to(device)
 
     for epoch in range(epochs):
@@ -136,6 +136,7 @@ def train_debias(task,
                     gbs_losses.append(debias_loss(neighborhood_points, neighborhood_values)[0])
 
                 gbs_loss = torch.mean(torch.stack(gbs_losses))
+
                 loss += debias_lambda * gbs_loss
 
             elif task == "Regression":

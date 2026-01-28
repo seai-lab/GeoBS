@@ -33,11 +33,13 @@ def main():
     dataset = settings["dataset"]
     eval_split = settings["eval_split"]
     load_model = settings["load_model"]
-    train_model = settings["train_model"]
-    train_epochs = settings["train_epochs"] # The number of total training epochs
-    debias_epochs = settings["debias_epochs"] # The number of debias training epochs. Can be 0.
     debias_radius = settings["debias_radius"]
     debias_lambda = settings["debias_lambda"]
+
+    trained_epochs = settings["trained_epochs"]
+    debiased_epochs = settings["debiased_epochs"]
+    epochs_to_train = settings["epochs_to_train"]
+    epochs_to_debias = settings["epochs_to_debias"]
 
     loc_encoder_name = settings["loc_encoder_name"]
     loc_encoder_params = settings["loc_encoder_params"]
@@ -64,7 +66,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     loc_dim = img_dim
-    embed_dim = img_dim
+    
+    embed_dim = img_dim 
+    
     
     # Allowed: Space2Vec-grid, Space2Vec-theory, xyz, NeRF, Sphere2Vec-sphereC, Sphere2Vec-sphereC+, Sphere2Vec-sphereM, Sphere2Vec-sphereM+, Sphere2Vec-dfs, rbf, rff, wrap, wrap_ffn, tile_ffn, Siren(SH)
     # For other required arguments, please refer to the docs (ex. rbf)
@@ -79,14 +83,13 @@ def main():
         load_cnn_features=True,
         load_cnn_features_train=True)
 
-    img_tr = torch.Tensor(all_data["train_feats"]).long() # shape=(19133, 2048)
-    loc_tr = torch.Tensor(all_data["train_locs"]).long() # shape=(19133, 2)
-    y_tr = torch.Tensor(all_data["train_classes"]).long() # shape=(19133, )
-
-
-    img_te = torch.Tensor(all_data["val_feats"]).long() # shape=(816, 2048)
-    loc_te = torch.Tensor(all_data["val_locs"]).long() # shape=(816, 2)
-    y_te = torch.Tensor(all_data["val_classes"]).long() # shape=(816, )
+    img_tr = torch.Tensor(all_data["train_feats"]).long() # shape=(N, 2048)
+    loc_tr = torch.Tensor(all_data["train_locs"]).long() # shape=(N, 2)
+    y_tr = torch.Tensor(all_data["train_classes"]).long() # shape=(N, )
+    
+    img_te = torch.Tensor(all_data["val_feats"]).long() # shape=(N, 2048)
+    loc_te = torch.Tensor(all_data["val_locs"]).long() # shape=(N, 2)
+    y_te = torch.Tensor(all_data["val_classes"]).long() # shape=(N, )
 
     idx_tr = np.arange(img_tr.shape[0])
     idx_te = np.arange(img_te.shape[0])
@@ -141,36 +144,44 @@ def main():
 
     lats, lons = np.radians(loc_tr[:,1]), np.radians(loc_tr[:,0])
     partitioner = SSIPartitioner(np.array([lats, lons]).T, k=SSIPartitioner_k, radius=debias_radius)
+
+    # - perf_transformer
     perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
 
-    if train_model:
-        # - train()
-        train(task=task,
-              epochs=train_epochs - debias_epochs,
-              batch_count_print_avg_loss=batch_count_print_avg_loss,
-              loc_encoder=loc_encoder,
-              dataloader=train_loader,
-              decoder=decoder,
-              criterion=criterion,
-              optimizer=optimizer,
-              scheduler=scheduler,
-              device=device)
+    train(task=task,
+        epochs=epochs_to_train,
+        batch_count_print_avg_loss=batch_count_print_avg_loss,
+        loc_encoder=loc_encoder,
+        dataloader=train_loader,
+        decoder=decoder,
+        criterion=criterion,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        device=device)
+    
+    if epochs_to_train:
+        trained_epochs += epochs_to_train
+        epochs_order.append(("train", epochs_to_train))
 
-        # - debias train
-        train_debias(task = task,
-            epochs = nominal_epochs_to_train,
-            batch_count_print_avg_loss = batch_count_print_avg_loss,
-            loc_encoder = loc_encoder,
-            dataloader = train_loader,
-            decoder = decoder,
-            criterion = criterion,
-            debias_loss = debias_loss,
-            debias_lambda = debias_lambda,
-            partitioner = partitioner,
-            perf_transformer = perf_transformer,
-            optimizer = optimizer,
-            scheduler = scheduler,
-            device = device)
+    # - debias
+    train_debias(task = task,
+        epochs = epochs_to_debias, 
+        batch_count_print_avg_loss = batch_count_print_avg_loss,
+        loc_encoder = loc_encoder,
+        dataloader = train_loader,
+        decoder = decoder,
+        criterion = criterion,
+        debias_loss = debias_loss,
+        debias_lambda = debias_lambda,
+        partitioner = partitioner,
+        perf_transformer = perf_transformer,
+        optimizer = optimizer,
+        scheduler = scheduler,
+        device = device)
+        
+    if epochs_to_debias:
+        debiased_epochs += epochs_to_debias
+        epochs_order.append(("debias", epochs_to_debias))
 
     # - save model
     model_path = f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
@@ -247,7 +258,7 @@ def main():
 
             lon = loc_b[:,0]
             lat = loc_b[:,1]
-            probas = nn.Softmax(dim = 1)(logits)
+            probas = nn.Softmax(dim = 1)(logits) 
             true_class_prob = probas.gather(1, y_idx.view(-1, 1)).squeeze(1)
 
             for i in range(B):
@@ -257,7 +268,7 @@ def main():
                     "lat": float(lat[i].item()),
                     "true_class_prob": float(true_class_prob[i].item()),
                     "reciprocal_rank": float(reciprocal_rank[i].item()),
-                    "hit@1": int(hit_at_1[i].item()),
+                    "hit@1": int(hit_at_1[i].item()), 
                     "hit@3": int(hit_at_3[i].item()),
                 })
                 sample_id += 1
@@ -271,8 +282,8 @@ def main():
                 neighborhood_points = partitioner.get_neighborhood_points(idx.item())
 
                 img_n, loc_n, y_n = (torch.stack([test_loader.dataset[i][1].to(device) for i in neighborhood_idx]),
-                                     torch.stack([test_loader.dataset[i][2].to(device) for i in neighborhood_idx]),
-                                     torch.stack([test_loader.dataset[i][3].to(device) for i in neighborhood_idx]))
+                                        torch.stack([test_loader.dataset[i][2].to(device) for i in neighborhood_idx]),
+                                        torch.stack([test_loader.dataset[i][3].to(device) for i in neighborhood_idx]))
 
                 img_embedding = img_n
                 loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
