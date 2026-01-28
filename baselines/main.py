@@ -70,10 +70,10 @@ def main():
     
     embed_dim = img_dim 
     
-    
     # Allowed: Space2Vec-grid, Space2Vec-theory, xyz, NeRF, Sphere2Vec-sphereC, Sphere2Vec-sphereC+, Sphere2Vec-sphereM, Sphere2Vec-sphereM+, Sphere2Vec-dfs, rbf, rff, wrap, wrap_ffn, tile_ffn, Siren(SH)
     # For other required arguments, please refer to the docs (ex. rbf)
     # https://torchspatial.readthedocs.io/en/latest/2D%20Location%20Encoders/rbf.html
+
     loc_encoder_params["device"] = device
 
     all_data = data_import.load_dataset(params = params,
@@ -87,6 +87,9 @@ def main():
     img_tr = torch.Tensor(all_data["train_feats"]).long() # shape=(N, 2048)
     loc_tr = torch.Tensor(all_data["train_locs"]).long() # shape=(N, 2)
     y_tr = torch.Tensor(all_data["train_classes"]).long() # shape=(N, )
+
+    if loc_encoder_name == "rbf":
+        loc_encoder_params["train_locs"] = all_data["train_locs"]
     
     img_te = torch.Tensor(all_data["val_feats"]).long() # shape=(N, 2048)
     loc_te = torch.Tensor(all_data["val_locs"]).long() # shape=(N, 2)
