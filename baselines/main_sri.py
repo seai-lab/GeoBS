@@ -95,6 +95,9 @@ def main():
     img_tr = torch.Tensor(all_data["train_feats"]).long() # shape=(N, 2048)
     loc_tr = torch.Tensor(all_data["train_locs"]).long() # shape=(N, 2)
     y_tr = torch.Tensor(all_data["train_classes"]).long() # shape=(N, )
+
+    if loc_encoder_name == "rbf":
+        loc_encoder_params["train_locs"] = all_data["train_locs"]
     
     img_te = torch.Tensor(all_data["val_feats"]).long() # shape=(N, 2048)
     loc_te = torch.Tensor(all_data["val_locs"]).long() # shape=(N, 2)
