@@ -122,10 +122,11 @@ def train_debias(epochs,
                 logits = decoder(loc_img_interaction_embedding)
 
                 neighborhood_values = perf_transformer(logits, y_n)
-                if np.unique(neighborhood_values.tolist()).shape[0] < 2:
-                    continue
 
-                gbs_losses.append(debias_loss(neighborhood_points, neighborhood_values)[0])
+                tmp_gbs_loss = debias_loss(neighborhood_points, neighborhood_values)
+
+                if tmp_gbs_loss is not None:
+                    gbs_losses.append(tmp_gbs_loss[0])
 
             if len(gbs_losses) > 0:
                 gbs_loss = torch.mean(torch.stack(gbs_losses))

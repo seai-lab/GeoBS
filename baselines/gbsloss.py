@@ -311,13 +311,19 @@ class SSILoss(nn.Module):
         ignores = np.ones_like(cs)
         ignores[rmax] = 0
 
+        # Handling extreme cases
+        ignore_ratio = ns[rmax] / np.sum(ns)
+        # print(f"Ignore ratio: {ignore_ratio}")
+        if ignore_ratio > 0.9 or ignore_ratio < 0.6:
+            return None
+
         weight_matrix = construct_weight_matrix(points, 4)
 
         loc, scale = self.analytical_surprisal.fit(cs, ns, weight_matrix, ignores)
 
-        w_map = torch.from_numpy(weight_matrix).to(device=values.device, dtype=values.dtype) #w_map = torch.from_numpy(weight_matrix)
+        w_map = torch.from_numpy(weight_matrix).to(device=values.device, dtype=values.dtype)
 
-        X = values.flatten().reshape((1, -1)) - torch.mean(values) #X = values.flatten().reshape((1, -1)) - torch.mean(values)
+        X = values.flatten().reshape((1, -1)) - torch.mean(values)
 
         Y = torch.matmul(w_map, X.T)
 
@@ -327,29 +333,4 @@ class SSILoss(nn.Module):
 
         prob = (1 + torch.erf((low - loc) / (scale * math.sqrt(2))))
 
-        # print(loc, scale, low, prob)
-
         return -torch.log(prob + 1e-32)
-
-        # X = scores - torch.mean(scores, dim=1, keepdim=True)
-        # weights = self.weight_matrix_lookup[idx]
-        # Y = torch.einsum('bij,bj->bi', weights, X)
-        # print("X, weights, Y: ", X.requires_grad, weights.requires_grad, Y.requires_grad)
-        #
-        # moran_i_uppers = torch.sum(X * Y, dim=1, keepdim=True)
-        # print("moran_i_uppers: ", moran_i_uppers.requires_grad)
-        # locs, scales = self.mean_lookup[idx], self.std_lookup[idx]
-        # print("locs, scales: ", locs, scales, locs.requires_grad, scales.requires_grad)
-        #
-        # left_tails, _ = torch.min(torch.cat((moran_i_uppers, 2 * locs - moran_i_uppers), dim=1), dim=1)
-        # print("left_tails: ", left_tails, left_tails.requires_grad)
-        #
-        # clamped_left_tails = torch.clamp((left_tails - locs) / scales, min=-5, max=0.)
-        #
-        # print("clamped_left_tails: ", clamped_left_tails, clamped_left_tails.requires_grad)
-        #
-        # cdf_values = 2 * torch.distributions.normal.Normal(loc=0, scale=1).cdf(clamped_left_tails)
-        #
-        # print("cdf values: ", cdf_values, cdf_values.requires_grad)
-        #
-        # return -torch.log(cdf_values + 1e-12)

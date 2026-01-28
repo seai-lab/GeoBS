@@ -7,7 +7,8 @@ from torch.optim import Adam
 
 from sklearn.model_selection import train_test_split
 
-from TorchSpatial.modules.trainer import train, train_debias , forward_with_np_array
+from TorchSpatial.trainer import train, train_debias
+from TorchSpatial.tester import test
 from TorchSpatial.modules.encoder_selector import get_loc_encoder
 from TorchSpatial.modules.models import ThreeLayerMLP
 import TorchSpatial.utils.datasets as data_import
@@ -143,10 +144,8 @@ def main():
     debias_loss = SSILoss()
 
     lats, lons = np.radians(loc_tr[:,1]), np.radians(loc_tr[:,0])
-    partitioner = SSIPartitioner(np.array([lats, lons]).T, k=SSIPartitioner_k, radius=debias_radius)
-
-    # - perf_transformer
-    perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
+    train_partitioner = SSIPartitioner(np.array([lats, lons]).T, k=SSIPartitioner_k, radius=debias_radius)
+    train_perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
 
     train(epochs=epochs_to_train,
         batch_count_print_avg_loss=batch_count_print_avg_loss,
@@ -171,8 +170,8 @@ def main():
         criterion = criterion,
         debias_loss = debias_loss,
         debias_lambda = debias_lambda,
-        partitioner = partitioner,
-        perf_transformer = perf_transformer,
+        partitioner = train_partitioner,
+        perf_transformer = train_perf_transformer,
         optimizer = optimizer,
         scheduler = scheduler,
         device = device)
@@ -202,110 +201,22 @@ def main():
     loc_encoder.eval()
     decoder.eval()
 
-    total = 0
-    correct_top1 = 0
-    correct_top3 = 0
-    rr_sum = 0
-
-    rows = []
-    sample_id = 0
-
-    total_ssi = 0.
-
     with torch.no_grad():
 
         lats, lons = np.radians(loc_te[:, 1]), np.radians(loc_te[:, 0])
-        partitioner = SSIPartitioner(np.array([lats, lons]).T, k=100, radius=debias_radius)
-        perf_transformer = BinaryPerformanceTransformer(thres=0.9)
+        test_partitioner = SSIPartitioner(np.array([lats, lons]).T, k=SSIPartitioner_k, radius=debias_radius)
+        test_perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
 
-        for idx_b, img_b, loc_b, y_b in test_loader:
-
-            img_b, loc_b, y_b = img_b.to(device), loc_b.to(device), y_b.to(device)
-
-            img_embedding = img_b
-            loc_embedding = forward_with_np_array(batch_data=loc_b, model=loc_encoder)
-
-            loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
-            logits = decoder(loc_img_interaction_embedding)
-
-            B = y_b.size(0)
-
-            if y_b.ndim == 2:
-                y_idx = y_b.argmax(dim=1).long()
-            else:
-                y_idx = y_b.long()
-
-            # Top-1
-            pred = logits.argmax(dim=1)
-            hit_at_1 = (pred == y_idx)
-
-            # Top-3 accuracy
-            top3_idx = logits.topk(3, dim=1).indices                    # [B, 3]
-            correct_top3 += (top3_idx == y_b.unsqueeze(1)).any(dim=1).sum().item()
-            hit_at_3 = (top3_idx == y_idx.unsqueeze(1)).any(dim=1)
-
-            # MRR (full ranking over all classes)
-            ranking = logits.argsort(dim=1, descending=True)             # [B, C]
-            positions = ranking.argsort(dim=1)                           # [B, C] where positions[b, c] = rank index (0-based)
-            true_pos0 = positions.gather(1, y_b.view(-1, 1)).squeeze(1)  # [B]
-            rr_sum += (1.0 / (true_pos0.float() + 1.0)).sum().item()
-            reciprocal_rank = 1.0 / (true_pos0.float() + 1.0)
-
-            total += y_b.size(0)
-            correct_top1 += (pred == y_b).sum().item()
-
-            lon = loc_b[:,0]
-            lat = loc_b[:,1]
-            probas = nn.Softmax(dim = 1)(logits) 
-            true_class_prob = probas.gather(1, y_idx.view(-1, 1)).squeeze(1)
-
-            for i in range(B):
-                rows.append({
-                    "Unnamed: 0": sample_id,
-                    "lon": float(lon[i].item()),
-                    "lat": float(lat[i].item()),
-                    "true_class_prob": float(true_class_prob[i].item()),
-                    "reciprocal_rank": float(reciprocal_rank[i].item()),
-                    "hit@1": int(hit_at_1[i].item()), 
-                    "hit@3": int(hit_at_3[i].item()),
-                })
-                sample_id += 1
-
-            ### SSI evaluation
-            for idx in idx_b:
-                neighborhood_idx = partitioner.get_neighborhood_idx(idx.item())
-                if neighborhood_idx.shape[0] < 10:
-                    continue
-
-                neighborhood_points = partitioner.get_neighborhood_points(idx.item())
-
-                img_n, loc_n, y_n = (torch.stack([test_loader.dataset[i][1].to(device) for i in neighborhood_idx]),
-                                        torch.stack([test_loader.dataset[i][2].to(device) for i in neighborhood_idx]),
-                                        torch.stack([test_loader.dataset[i][3].to(device) for i in neighborhood_idx]))
-
-                img_embedding = img_n
-                loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
-
-                loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
-                logits = decoder(loc_img_interaction_embedding)
-
-                neighborhood_values = perf_transformer(logits, y_n)
-
-                total_ssi += debias_loss(neighborhood_points, neighborhood_values)[0].item()
+        rows = test(test_loader,
+                    loc_encoder,
+                    decoder,
+                    debias_loss,
+                    test_partitioner,
+                    test_perf_transformer,
+                    device)
 
     df = pd.DataFrame(rows)
     df.to_csv(f"TorchSpatial/eval_results/eval_{dataset}_{meta_type}_{eval_split}_{loc_encoder_name}_trained-{trained_epochs}_debiased-{debiased_epochs}.csv", index=True)
-
-    # Separate block because need to use total
-    top1_acc = 100.0 * correct_top1 / total if total else 0.0
-    top3_acc = 100.0 * correct_top3 / total if total else 0.0
-    mrr = rr_sum / total if total else 0.0
-    ssi = total_ssi / total if total else 0.0
-
-    print(f"Top-1 Accuracy on {total} test images: {top1_acc:.2f}%")
-    print(f"Top-3 Accuracy on {total} test images: {top3_acc:.2f}%")
-    print(f"MRR on {total} test images: {mrr:.4f}")
-    print(f"SSI score on {total} test images: {ssi:.4f}")
 
 if __name__ == "__main__":
     main()
