@@ -88,6 +88,39 @@ def _center_grid_points(xyzs, center):
 
     return r.apply(xyzs)
 
+def _move_points_to_polar(xyzs, center):
+    """
+    :param xyzs: 3D Cartesian coordinates of points.
+    :param center: the (latitude, longitude) of the center point, in radians.
+    :return: the 3D Cartesian coordinates of points centered at the northern pole.
+    """
+    rotate_phi, rotate_theta = _get_euler_angles(center)
+    r = R.from_euler('zy', [-rotate_theta, -rotate_phi], degrees=False)
+
+    return r.apply(xyzs)
+
+def _get_arc_angles(points, center):
+    """
+    :param points: spherical coordinates of points, in radians.
+    :param center: the (latitude, longitude) of the center point, in radians.
+    :return: the absolute arc angles between each point and the south-pointing arc passing the center.
+    """
+    xyzs = _latlon_to_xyz(points)
+    polar_xyzs = _move_points_to_polar(xyzs, center)
+    polar_points = _xyz_to_latlon(polar_xyzs)
+
+    raw_angles = polar_points[:, 1] - center[1]
+    idx = np.where(np.abs(raw_angles) > np.pi)
+
+    if (raw_angles[idx] > 0).all():
+        raw_angles[idx] = -(2 * np.pi - raw_angles[idx])
+    elif (raw_angles[idx] < 0).all():
+        raw_angles[idx] = 2 * np.pi + raw_angles[idx]
+    else:
+        assert False, "Incorrect angle sign!"
+
+    return raw_angles
+
 def auto_density(radius, n_neighbors):
     return int(np.ceil((1 * n_neighbors) / (np.pi * radius**2)))
 
@@ -219,7 +252,6 @@ class SSIPartitioner():
         self.k = k
         self.radius = radius
         self.min_dist = min_dist
-        # self.kdt, self.dists, self.neighbors = self._construct_tree()
         self.neighbors = self._construct_tree()
         self.backgrounds = self._construct_backgrounds()
 
@@ -228,7 +260,6 @@ class SSIPartitioner():
         dists, nbrs = kdt.query(self.coords, k=self.k, return_distance=True)
 
         return dict(zip([i for i in range(self.N)], [nbrs[i, (dists[i] >= self.min_dist) & (dists[i] <= self.radius)] for i in range(self.N)]))
-        # return kdt, dists, nbrs
 
     def _construct_backgrounds(self):
         return dict(zip([i for i in range(self.N)], [generate_background_points(self.coords[i], self.radius, auto_density(self.radius, self.neighbors[i].shape[0])) for i in range(self.N)]))
@@ -241,6 +272,74 @@ class SSIPartitioner():
 
     def get_background_points(self, idx):
         return np.array(self.backgrounds[idx])
+
+class SRIPartitioner():
+    def __init__(self, coords, k=100, radius=0.01, min_dist=0.0):
+        self.coords = coords
+        self.N = coords.shape[0]
+        self.k = k
+        self.radius = radius
+        self.min_dist = min_dist
+        self.neighbors, self.dists = self._construct_tree()
+
+    def _construct_tree(self):
+        kdt = BallTree(self.coords, leaf_size=30, metric='haversine')
+        dists, nbrs = kdt.query(self.coords, k=self.k, return_distance=True)
+
+        return dict(zip([i for i in range(self.N)], [nbrs[i, (dists[i] >= self.min_dist) & (dists[i] <= self.radius)] for i in range(self.N)])), dict(zip([i for i in range(self.N)], [dists[i, (dists[i] >= self.min_dist) & (dists[i] <= self.radius)] for i in range(self.N)]))
+
+    def get_neighborhood_idx(self, idx):
+        return np.array(self.neighbors[idx]), np.array(self.dists[idx]), self.coords[self.neighbors[idx]]
+
+    def get_scale_grid_idx(self, idx, scale, threshold=20):
+        partition_idx_list = []
+        neighbor_indices, neighbor_dists, neighbor_coords = self.get_neighborhood_idx(idx)
+
+        k = int(np.ceil(self.radius / scale))
+        lat, lon = self.coords[idx]
+
+        for i in range(-k, k, 1):
+            for j in range(-k, k, 1):
+                mask = np.where((neighbor_coords[:, 0] >= lat + i*scale) & (neighbor_coords[:, 0] < lat + (i+1)*scale) & (neighbor_coords[:, 1] >= lon + j*scale) & (neighbor_coords[:, 1] < lon + (j+1)*scale))
+                if len(mask[0]) < threshold:
+                    continue
+
+                partition_idx = mask[0]
+                partition_idx_list.append(partition_idx)
+
+        return partition_idx_list, neighbor_indices
+
+    def get_distance_lag_idx(self, idx, lag, threshold=20):
+        partition_idx_list = []
+        neighbor_indices, neighbor_dists, neighbor_coords = self.get_neighborhood_idx(idx)
+
+        n_lags = int(np.ceil(self.radius / lag))
+        for i in range(n_lags):
+            mask = np.where((neighbor_dists >= lag * i) & (neighbor_dists < lag * (i + 1)))
+
+            if len(mask[0]) < threshold:
+                continue
+            partition_idx = mask[0]
+            partition_idx_list.append(partition_idx)
+
+        return partition_idx_list, neighbor_indices
+
+    def get_direction_sector_idx(self, idx, n_splits, threshold=20):
+        partition_idx_list = []
+        neighbor_indices, neighbor_dists, neighbor_coords = self.get_neighborhood_idx(idx)
+
+        arc_angles = _get_arc_angles(self.coords[neighbor_indices], self.coords[idx])
+
+        split_angle = 2 * np.pi / n_splits
+        for i in range(n_splits):
+            mask = np.where((arc_angles >= -np.pi + i * split_angle) & (arc_angles < -np.pi + (i + 1) * split_angle))
+            if len(mask[0]) < threshold:
+                continue
+            partition_idx = mask[0]
+            partition_idx_list.append(partition_idx)
+
+        return partition_idx_list, neighbor_indices
+
 
 class DifferentiableCeil(torch.autograd.Function):
     @staticmethod
@@ -274,6 +373,24 @@ class BinaryPerformanceTransformer(nn.Module):
         steps = self.discretize(probs)
 
         return steps[np.arange(logits.shape[0]),y]
+
+class BinnedPerformanceTransformer(nn.Module):
+    def __init__(self, scale=5):
+        super(BinnedPerformanceTransformer, self).__init__()
+        self.scale = scale
+
+    def get_probs(self, logits):
+        return torch.softmax(logits, dim=1)
+
+    def discretize(self, probs):
+        return differentiable_ceil(self.scale * probs)
+
+    def forward(self, logits, y):
+        probs = self.get_probs(logits)
+        steps = self.discretize(probs)
+
+        return steps[np.arange(logits.shape[0]),y]
+
 class LogOddsPerformanceTransformer(nn.Module):
     def __init__(self, cls, scale=10):
         super(LogOddsPerformanceTransformer, self).__init__()
@@ -293,6 +410,26 @@ class LogOddsPerformanceTransformer(nn.Module):
         steps = self.discretize(scores)
 
         return steps[np.arange(logits.shape[0]),y]
+
+class SoftHistogramPerformanceTransformer(nn.Module):
+    def __init__(self, bins, min=0., max=1., sigma=3):
+        super(SoftHistogramPerformanceTransformer, self).__init__()
+        self.bins = bins
+        self.min = min
+        self.max = max
+        self.sigma = sigma
+        self.delta = float(self.max - self.min) / float(bins)
+        self.centers = float(self.min) + self.delta * (torch.arange(bins).float() + 0.5)
+
+    def get_probs(self, logits):
+        return torch.softmax(logits, dim=1)
+
+    def forward(self, logits, y):
+        probs = self.get_probs(logits)[np.arange(logits.shape[0]),y]
+
+        probs = torch.unsqueeze(probs, 0) - torch.unsqueeze(self.centers, 1)
+        steps = torch.sigmoid(self.sigma * (probs + self.delta/2)) - torch.sigmoid(self.sigma * (probs - self.delta/2))
+        return steps.sum(dim=1) / steps.sum()
 
 class SSILoss(nn.Module):
     def __init__(self):
@@ -334,3 +471,17 @@ class SSILoss(nn.Module):
         prob = (1 + torch.erf((low - loc) / (scale * math.sqrt(2))))
 
         return -torch.log(prob + 1e-32), ignore_ratio
+
+class SRILoss(nn.Module):
+    def __init__(self):
+        super(SRILoss, self).__init__()
+        self.kldiv = nn.KLDivLoss()
+
+    def forward(self, partition_values, neighborhood_values):
+        """
+        :param points: the locations of the center and neighbor points, Bx2.
+        :param values: the discretized performance values, B.
+        :return: SSI loss.
+        """
+
+        return self.kldiv(partition_values.log(), neighborhood_values)

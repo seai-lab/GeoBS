@@ -14,16 +14,23 @@ def forward_with_np_array(batch_data, model):
 def test(dataloader,
          loc_encoder,
          decoder,
-         debias_loss,
-         partitioner,
-         perf_transformer,
+         ssi_loss,
+         ssi_partitioner,
+         ssi_perf_transformer,
+         sri_loss,
+         sri_partitioner,
+         sri_perf_transformer,
+         scale_grid,
+         distance_lag,
+         split_number,
          device):
 
     total = 0.
     correct_top1 = 0.
     correct_top3 = 0.
     rr_sum = 0.
-    gbses = []
+    ssis = []
+    sri_sgs, sri_dls, sri_dss = [], [], []
 
     rows = []
 
@@ -74,11 +81,11 @@ def test(dataloader,
         for i in range(B):
             idx = idx_b[i]
 
-            neighborhood_idx = partitioner.get_neighborhood_idx(idx.item())
-            tmp_gbs, ignore_ratio = None, None
+            neighborhood_idx = ssi_partitioner.get_neighborhood_idx(idx.item())
+            tmp_ssi, ignore_ratio = None, None
 
             if neighborhood_idx.shape[0] >= 10:
-                neighborhood_points = partitioner.get_neighborhood_points(idx.item())
+                neighborhood_points = ssi_partitioner.get_neighborhood_points(idx.item())
 
                 img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
                                      torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
@@ -93,14 +100,67 @@ def test(dataloader,
                 
                 logits = decoder(loc_img_interaction_embedding)
 
-                neighborhood_values = perf_transformer(logits, y_n)
+                neighborhood_values = ssi_perf_transformer(logits, y_n)
 
-                tmp_gbs, ignore_ratio = debias_loss(neighborhood_points, neighborhood_values)
+                tmp_ssi, ignore_ratio = ssi_loss(neighborhood_points, neighborhood_values)
                 ignore_ratio = float(ignore_ratio)
 
-                if tmp_gbs is not None:
-                    tmp_gbs = float(tmp_gbs[0].item())
-                    gbses.append(tmp_gbs)
+                if tmp_ssi is not None:
+                    tmp_ssi = float(tmp_ssi[0].item())
+                    ssis.append(tmp_ssi)
+
+            neighborhood_idx, _, _ = sri_partitioner.get_neighborhood_idx(idx.item())
+
+            if neighborhood_idx.shape[0] < 100:
+                continue
+
+            img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
+                                torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
+                                torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
+
+            img_embedding = img_n
+            if loc_encoder:
+                loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
+            else:
+                loc_embedding = torch.ones_like(img_embedding).float()
+            loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
+
+            logits = decoder(loc_img_interaction_embedding)
+
+            neighborhood_values = sri_perf_transformer(logits, y_n)
+
+            tmp_sri_sg, tmp_sri_dl, tmp_sri_ds = None, None, None
+            tmp_sri_sgs, tmp_sri_dls, tmp_sri_dss = [], [], []
+
+            # Scale Grid SRI
+            partition_idx_list, neighborhood_idx = sri_partitioner.get_scale_grid_idx(idx.item(), scale=scale_grid)
+            for partition_idx in partition_idx_list:
+                partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
+                tmp_sri_sgs.append(sri_loss(partition_values, neighborhood_values).item())
+
+            if len(tmp_sri_sgs) > 0:
+                tmp_sri_sg = np.sum(tmp_sri_sgs)
+                sri_sgs.append(tmp_sri_sg)
+
+            # Distance Lag SRI
+            partition_idx_list, neighborhood_idx = sri_partitioner.get_distance_lag_idx(idx.item(), lag=distance_lag)
+            for partition_idx in partition_idx_list:
+                partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
+                tmp_sri_dls.append(sri_loss(partition_values, neighborhood_values).item())
+
+            if len(tmp_sri_dls) > 0:
+                tmp_sri_dl = np.sum(tmp_sri_dls)
+                sri_dls.append(tmp_sri_dl)
+
+            # Direction Sector SRI
+            partition_idx_list, neighborhood_idx = sri_partitioner.get_direction_sector_idx(idx.item(), n_splits=split_number)
+            for partition_idx in partition_idx_list:
+                partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
+                tmp_sri_dss.append(sri_loss(partition_values, neighborhood_values).item())
+
+            if len(tmp_sri_dss) > 0:
+                tmp_sri_ds = np.sum(tmp_sri_dss)
+                sri_dss.append(tmp_sri_ds)
 
             rows.append({
                 "lon": float(lon[i].item()),
@@ -109,19 +169,28 @@ def test(dataloader,
                 "reciprocal_rank": float(reciprocal_rank[i].item()),
                 "hit@1": int(hit_at_1[i].item()),
                 "hit@3": int(hit_at_3[i].item()),
-                "gbs": tmp_gbs,
-                "ignore_ratio": ignore_ratio
+                "ssi": tmp_ssi,
+                # "ignore_ratio": ignore_ratio
+                "sri_sg": tmp_sri_sg,
+                "sri_dl": tmp_sri_dl,
+                "sri_ds": tmp_sri_ds
             })
 
     # Separate block because need to use total
     top1_acc = 100.0 * correct_top1 / total if total else 0.0
     top3_acc = 100.0 * correct_top3 / total if total else 0.0
     mrr = rr_sum / total if total else 0.0
-    gbs = np.mean(gbses) if len(gbses) > 0 else 0.0
+    ssi = np.mean(ssis) if len(ssis) > 0 else 0.0
+    sri_sg = np.max(sri_sgs) if len(sri_sgs) > 0 else 0.0
+    sri_dl = np.max(sri_dls) if len(sri_dls) > 0 else 0.0
+    sri_ds = np.max(sri_dss) if len(sri_dss) > 0 else 0.0
 
     print(f"Top-1 Accuracy on {total} test images: {top1_acc:.2f}%")
     print(f"Top-3 Accuracy on {total} test images: {top3_acc:.2f}%")
     print(f"MRR on {total} test images: {mrr:.4f}")
-    print(f"GBS score on {len(gbses)} valid test neighborhoods: {gbs:.4f}")
+    print(f"SSI score on {len(ssis)} valid test neighborhoods: {ssi:.4f}")
+    print(f"SRI SG score on {len(sri_sgs)} valid test neighborhoods: {sri_sg:.4f}")
+    print(f"SSI DL score on {len(sri_dls)} valid test neighborhoods: {sri_dl:.4f}")
+    print(f"SSI DS score on {len(sri_dss)} valid test neighborhoods: {sri_ds:.4f}")
 
     return rows

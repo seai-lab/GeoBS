@@ -4,11 +4,17 @@
     "load_model": false,
     "trained_epochs": 0,
     "debiased_epochs": 0,
-    "epochs_to_train": 2,
-    "epochs_to_debias": 1,
-
-    "debias_radius": 0.01,
+    "epochs_to_train": 1,
+    "epochs_to_debias": 0,
     "debias_lambda": 0.0001,
+
+    "ssi_radius": 0.01,
+    "sri_radius": 0.1,
+    "sri_lambda": 0.001,
+    "sri_partition_mode": "ScaleGrid",
+    "sri_scale_grid": 0.02,
+    "sri_distance_lag": 0.02,
+    "sri_split_number": 4,
     
     "loc_encoder_name": "rbf",
     "loc_encoder_params": {"spa_embed_dim": 2048, "model_type": "global"},
@@ -20,8 +26,9 @@
     "optimizer_lr": 1e-3,
     "scheduler_threshold": 1e-4,
 
-    "SSIPartitioner_k": 100,
+    "partition_k": 100,
     "BinaryPerformanceTransformer_thres":0.9,
+    "SoftHistogramPerformanceTransformer_bins": 4,
 
     "birdsnap":
     {"params": {"dataset": "birdsnap", "meta_type": "orig_meta", "regress_dataset": []},
