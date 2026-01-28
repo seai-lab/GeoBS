@@ -26,7 +26,6 @@ def test(dataloader,
     gbses = []
 
     rows = []
-    sample_id = 0
 
     for idx_b, img_b, loc_b, y_b in dataloader:
 
@@ -73,40 +72,40 @@ def test(dataloader,
             idx = idx_b[i]
 
             neighborhood_idx = partitioner.get_neighborhood_idx(idx.item())
-            if neighborhood_idx.shape[0] < 10:
-                continue
+            tmp_gbs, ignore_ratio = None, None
 
-            neighborhood_points = partitioner.get_neighborhood_points(idx.item())
+            if neighborhood_idx.shape[0] >= 10:
+                neighborhood_points = partitioner.get_neighborhood_points(idx.item())
 
-            img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
-                                 torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
-                                 torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
+                img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
+                                     torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
+                                     torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
 
-            img_embedding = img_n
-            loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
+                img_embedding = img_n
+                loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
 
-            loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
-            logits = decoder(loc_img_interaction_embedding)
+                loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
+                logits = decoder(loc_img_interaction_embedding)
 
-            neighborhood_values = perf_transformer(logits, y_n)
+                neighborhood_values = perf_transformer(logits, y_n)
 
-            tmp_gbs = debias_loss(neighborhood_points, neighborhood_values)
+                tmp_gbs, ignore_ratio = debias_loss(neighborhood_points, neighborhood_values)
+                ignore_ratio = float(ignore_ratio)
 
-            if tmp_gbs is not None:
-                tmp_gbs = float(tmp_gbs[0].item())
-                gbses.append(tmp_gbs)
+                if tmp_gbs is not None:
+                    tmp_gbs = float(tmp_gbs[0].item())
+                    gbses.append(tmp_gbs)
 
             rows.append({
-                "Unnamed: 0": sample_id,
                 "lon": float(lon[i].item()),
                 "lat": float(lat[i].item()),
                 "true_class_prob": float(true_class_prob[i].item()),
                 "reciprocal_rank": float(reciprocal_rank[i].item()),
                 "hit@1": int(hit_at_1[i].item()),
                 "hit@3": int(hit_at_3[i].item()),
-                "gbs": tmp_gbs
+                "gbs": tmp_gbs,
+                "ignore_ratio": ignore_ratio
             })
-            sample_id += 1
 
     # Separate block because need to use total
     top1_acc = 100.0 * correct_top1 / total if total else 0.0

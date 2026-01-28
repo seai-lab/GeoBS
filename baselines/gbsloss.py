@@ -315,7 +315,7 @@ class SSILoss(nn.Module):
         ignore_ratio = ns[rmax] / np.sum(ns)
         # print(f"Ignore ratio: {ignore_ratio}")
         if ignore_ratio > 0.9 or ignore_ratio < 0.6:
-            return None
+            return None, ignore_ratio
 
         weight_matrix = construct_weight_matrix(points, 4)
 
@@ -333,4 +333,4 @@ class SSILoss(nn.Module):
 
         prob = (1 + torch.erf((low - loc) / (scale * math.sqrt(2))))
 
-        return -torch.log(prob + 1e-32)
+        return -torch.log(prob + 1e-32), ignore_ratio
