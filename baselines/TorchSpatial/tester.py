@@ -32,9 +32,12 @@ def test(dataloader,
         img_b, loc_b, y_b = img_b.to(device), loc_b.to(device), y_b.to(device)
 
         img_embedding = img_b
-        loc_embedding = forward_with_np_array(batch_data=loc_b, model=loc_encoder)
-
+        if loc_encoder:
+            loc_embedding = forward_with_np_array(batch_data = loc_b, model = loc_encoder)
+        else:
+            loc_embedding = torch.ones_like(img_embedding).float()
         loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
+
         logits = decoder(loc_img_interaction_embedding)
 
         B = y_b.size(0)
@@ -82,9 +85,12 @@ def test(dataloader,
                                      torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
 
                 img_embedding = img_n
-                loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
-
+                if loc_encoder:
+                    loc_embedding = forward_with_np_array(batch_data = loc_n, model = loc_encoder)
+                else:
+                    loc_embedding = torch.ones_like(img_embedding).float()
                 loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
+                
                 logits = decoder(loc_img_interaction_embedding)
 
                 neighborhood_values = perf_transformer(logits, y_n)
