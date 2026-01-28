@@ -105,7 +105,10 @@ def main():
     test_loader  = DataLoader(test_data_zip, batch_size=batch_size, shuffle=False)
 
     # - location encoder
-    loc_encoder = get_loc_encoder(name = loc_encoder_name, overrides = loc_encoder_params).to(device) # "device": device is needed if you defined device = 'cpu' above and don't have cuda setup to prevent "AssertionError: Torch not compiled with CUDA enabled", because the default is device="cuda"
+    if loc_encoder_name != "no_prior":
+        loc_encoder = get_loc_encoder(name = loc_encoder_name, overrides = loc_encoder_params).to(device) # "device": device is needed if you defined device = 'cpu' above and don't have cuda setup to prevent "AssertionError: Torch not compiled with CUDA enabled", because the default is device="cuda"
+    else:
+        loc_encoder = None
 
     # - model
     decoder = ThreeLayerMLP(input_dim = embed_dim, hidden_dim = decoder_hidden_dim, category_count = num_classes, activation_func = activation_func).to(device)
@@ -113,7 +116,10 @@ def main():
     criterion = nn.CrossEntropyLoss()
 
     # - Optimizer
-    optimizer = Adam(params = list(loc_encoder.parameters()) + list(decoder.parameters()), lr = optimizer_lr)
+    if loc_encoder:
+        optimizer = Adam(params = list(loc_encoder.parameters()) + list(decoder.parameters()), lr = optimizer_lr)
+    else:
+        optimizer = Adam(params = list(decoder.parameters()), lr = optimizer_lr)
 
     # - Scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -126,8 +132,8 @@ def main():
         model_path = f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
 
         ckpt = torch.load(model_path, map_location=device)
-
-        loc_encoder.load_state_dict(ckpt["loc_encoder"])
+        if loc_encoder:
+            loc_encoder.load_state_dict(ckpt["loc_encoder"])
         decoder.load_state_dict(ckpt["decoder"])
         optimizer.load_state_dict(ckpt["optimizer"])
         trained_epochs = ckpt["trained_epochs"]
@@ -137,7 +143,8 @@ def main():
 
         print(f"Checkpoint loaded from {model_path}; trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
 
-    loc_encoder.train()
+    if loc_encoder:
+        loc_encoder.train()
     decoder.train()
 
     ### Initialize gbs loss meta
@@ -185,20 +192,31 @@ def main():
     path = Path(model_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    torch.save({
-        "trained_epochs": trained_epochs,
-        "debiased_epochs": debiased_epochs,
-        "epochs_order": epochs_order,
-        "loc_encoder": loc_encoder.state_dict(),
-        "decoder": decoder.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scheduler": scheduler.state_dict()
-    }, path)
+    if loc_encoder:
+        torch.save({
+            "trained_epochs": trained_epochs,
+            "debiased_epochs": debiased_epochs,
+            "epochs_order": epochs_order,
+            "loc_encoder": loc_encoder.state_dict(),
+            "decoder": decoder.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict()
+        }, path)
+    else:
+        torch.save({
+            "trained_epochs": trained_epochs,
+            "debiased_epochs": debiased_epochs,
+            "epochs_order": epochs_order,
+            "decoder": decoder.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict()
+        }, path)
 
     print(f"Model saved as {model_path}; in total, trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
     
     # - test
-    loc_encoder.eval()
+    if loc_encoder:
+        loc_encoder.eval()
     decoder.eval()
 
     with torch.no_grad():
