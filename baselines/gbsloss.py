@@ -291,7 +291,7 @@ class SRIPartitioner():
     def get_neighborhood_idx(self, idx):
         return np.array(self.neighbors[idx]), np.array(self.dists[idx]), self.coords[self.neighbors[idx]]
 
-    def get_scale_grid_idx(self, idx, scale, threshold=20):
+    def get_scale_grid_idx(self, idx, scale, threshold=10):
         partition_idx_list = []
         neighbor_indices, neighbor_dists, neighbor_coords = self.get_neighborhood_idx(idx)
 
@@ -309,7 +309,7 @@ class SRIPartitioner():
 
         return partition_idx_list, neighbor_indices
 
-    def get_distance_lag_idx(self, idx, lag, threshold=20):
+    def get_distance_lag_idx(self, idx, lag, threshold=10):
         partition_idx_list = []
         neighbor_indices, neighbor_dists, neighbor_coords = self.get_neighborhood_idx(idx)
 
@@ -324,7 +324,7 @@ class SRIPartitioner():
 
         return partition_idx_list, neighbor_indices
 
-    def get_direction_sector_idx(self, idx, n_splits, threshold=20):
+    def get_direction_sector_idx(self, idx, n_splits, threshold=10):
         partition_idx_list = []
         neighbor_indices, neighbor_dists, neighbor_coords = self.get_neighborhood_idx(idx)
 
@@ -475,7 +475,7 @@ class SSILoss(nn.Module):
 class SRILoss(nn.Module):
     def __init__(self):
         super(SRILoss, self).__init__()
-        self.kldiv = nn.KLDivLoss()
+        self.kldiv = nn.KLDivLoss(reduction="batchmean")
 
     def forward(self, partition_values, neighborhood_values):
         """

@@ -109,58 +109,62 @@ def test(dataloader,
                     tmp_ssi = float(tmp_ssi[0].item())
                     ssis.append(tmp_ssi)
 
-            neighborhood_idx, _, _ = sri_partitioner.get_neighborhood_idx(idx.item())
-
-            if neighborhood_idx.shape[0] < 100:
-                continue
-
-            img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
-                                torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
-                                torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
-
-            img_embedding = img_n
-            if loc_encoder:
-                loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
-            else:
-                loc_embedding = torch.ones_like(img_embedding).float()
-            loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
-
-            logits = decoder(loc_img_interaction_embedding)
-
-            neighborhood_values = sri_perf_transformer(logits, y_n)
-
             tmp_sri_sg, tmp_sri_dl, tmp_sri_ds = None, None, None
             tmp_sri_sgs, tmp_sri_dls, tmp_sri_dss = [], [], []
 
-            # Scale Grid SRI
-            partition_idx_list, neighborhood_idx = sri_partitioner.get_scale_grid_idx(idx.item(), scale=scale_grid)
-            for partition_idx in partition_idx_list:
-                partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
-                tmp_sri_sgs.append(sri_loss(partition_values, neighborhood_values).item())
+            neighborhood_idx, _, _ = sri_partitioner.get_neighborhood_idx(idx.item())
 
-            if len(tmp_sri_sgs) > 0:
-                tmp_sri_sg = np.sum(tmp_sri_sgs)
-                sri_sgs.append(tmp_sri_sg)
+            if neighborhood_idx.shape[0] > 50:
 
-            # Distance Lag SRI
-            partition_idx_list, neighborhood_idx = sri_partitioner.get_distance_lag_idx(idx.item(), lag=distance_lag)
-            for partition_idx in partition_idx_list:
-                partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
-                tmp_sri_dls.append(sri_loss(partition_values, neighborhood_values).item())
+                img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
+                                    torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
+                                    torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
 
-            if len(tmp_sri_dls) > 0:
-                tmp_sri_dl = np.sum(tmp_sri_dls)
-                sri_dls.append(tmp_sri_dl)
+                img_embedding = img_n
+                if loc_encoder:
+                    loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
+                else:
+                    loc_embedding = torch.ones_like(img_embedding).float()
+                loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
 
-            # Direction Sector SRI
-            partition_idx_list, neighborhood_idx = sri_partitioner.get_direction_sector_idx(idx.item(), n_splits=split_number)
-            for partition_idx in partition_idx_list:
-                partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
-                tmp_sri_dss.append(sri_loss(partition_values, neighborhood_values).item())
+                logits = decoder(loc_img_interaction_embedding)
 
-            if len(tmp_sri_dss) > 0:
-                tmp_sri_ds = np.sum(tmp_sri_dss)
-                sri_dss.append(tmp_sri_ds)
+                neighborhood_values = sri_perf_transformer(logits, y_n)
+
+                print("Neighborhood values", neighborhood_values)
+
+                # Scale Grid SRI
+                partition_idx_list, neighborhood_idx = sri_partitioner.get_scale_grid_idx(idx.item(), scale=scale_grid)
+                for partition_idx in partition_idx_list:
+                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
+                    print("Scale grid values", partition_values)
+                    tmp_sri_sgs.append(sri_loss(partition_values, neighborhood_values).item())
+
+                if len(tmp_sri_sgs) > 0:
+                    tmp_sri_sg = np.sum(tmp_sri_sgs)
+                    sri_sgs.append(tmp_sri_sg)
+
+                # Distance Lag SRI
+                partition_idx_list, neighborhood_idx = sri_partitioner.get_distance_lag_idx(idx.item(), lag=distance_lag)
+                for partition_idx in partition_idx_list:
+                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
+                    print("Distance lag values", partition_values)
+                    tmp_sri_dls.append(sri_loss(partition_values, neighborhood_values).item())
+
+                if len(tmp_sri_dls) > 0:
+                    tmp_sri_dl = np.sum(tmp_sri_dls)
+                    sri_dls.append(tmp_sri_dl)
+
+                # Direction Sector SRI
+                partition_idx_list, neighborhood_idx = sri_partitioner.get_direction_sector_idx(idx.item(), n_splits=split_number)
+                for partition_idx in partition_idx_list:
+                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
+                    print("Direction sector values", partition_values)
+                    tmp_sri_dss.append(sri_loss(partition_values, neighborhood_values).item())
+
+                if len(tmp_sri_dss) > 0:
+                    tmp_sri_ds = np.sum(tmp_sri_dss)
+                    sri_dss.append(tmp_sri_ds)
 
             rows.append({
                 "lon": float(lon[i].item()),
@@ -181,9 +185,9 @@ def test(dataloader,
     top3_acc = 100.0 * correct_top3 / total if total else 0.0
     mrr = rr_sum / total if total else 0.0
     ssi = np.mean(ssis) if len(ssis) > 0 else 0.0
-    sri_sg = np.max(sri_sgs) if len(sri_sgs) > 0 else 0.0
-    sri_dl = np.max(sri_dls) if len(sri_dls) > 0 else 0.0
-    sri_ds = np.max(sri_dss) if len(sri_dss) > 0 else 0.0
+    sri_sg = np.mean(sri_sgs) if len(sri_sgs) > 0 else 0.0
+    sri_dl = np.mean(sri_dls) if len(sri_dls) > 0 else 0.0
+    sri_ds = np.mean(sri_dss) if len(sri_dss) > 0 else 0.0
 
     print(f"Top-1 Accuracy on {total} test images: {top1_acc:.2f}%")
     print(f"Top-3 Accuracy on {total} test images: {top3_acc:.2f}%")
