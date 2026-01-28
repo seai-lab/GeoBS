@@ -133,7 +133,7 @@ def train_debias(epochs,
 
                 neighborhood_values = perf_transformer(logits, y_n)
 
-                tmp_gbs_loss = debias_loss(neighborhood_points, neighborhood_values)
+                tmp_gbs_loss, _ = debias_loss(neighborhood_points, neighborhood_values)
 
                 if tmp_gbs_loss is not None:
                     gbs_losses.append(tmp_gbs_loss[0])

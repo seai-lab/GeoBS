@@ -3,9 +3,9 @@
     "eval_split": "test",
     "load_model": true,
     "trained_epochs": 2,
-    "debiased_epochs": 1,
-    "epochs_to_train": 0,
-    "epochs_to_debias": 1,
+    "debiased_epochs": 2,
+    "epochs_to_train": 1,
+    "epochs_to_debias": 0,
 
     "debias_radius": 0.01,
     "debias_lambda": 0.0001,
