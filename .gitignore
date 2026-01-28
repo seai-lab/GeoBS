@@ -23,4 +23,5 @@ results/
 *.bak
 baselines/configs.json.bak
 baselines/*.json
+baselines/*.log
 
