@@ -11,14 +11,14 @@ mkdir -p "${LOG_DIR}"
 # Datasets to run
 DATASETS=(
   # "inat_2017"
-  "nabirds"
+  # "nabirds"
   "inat_2017"
 )
 
 # Models that can run without extra encoder params in configs.json
 # (rbf/wrap/wrap_ffn/tile_ffn/Naive need extra params; omitted by request)
 MODELS=(
-  # "Siren(SH)"
+  "Siren(SH)"
   # "rff"
   # "rbf"
   "Space2Vec-grid"
