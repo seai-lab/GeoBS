@@ -219,7 +219,7 @@ def train_sri_debias(epochs,
                 else:
                     assert False, "Unknown Partition Mode. Please choose from ScaleGrid, DistanceLag and DirectionSector."
 
-                if neighborhood_idx.shape[0] < 100:
+                if neighborhood_idx.shape[0] < 50:
                     continue
 
                 img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),

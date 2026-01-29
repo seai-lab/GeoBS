@@ -10,9 +10,8 @@
 
     "ssi_radius": 0.01,
     "sri_radius": 0.1,
-    "sri_lambda": 0.001,
     "sri_partition_mode": "ScaleGrid",
-    "sri_scale_grid": 0.02,
+    "sri_scale_grid": 0.05,
     "sri_distance_lag": 0.02,
     "sri_split_number": 4,
     
@@ -26,7 +25,7 @@
     "optimizer_lr": 0.01,
     "scheduler_threshold": 1e-4,
 
-    "partition_k": 100,
+    "partition_k": 400,
     "BinaryPerformanceTransformer_thres":0.9,
     "SoftHistogramPerformanceTransformer_bins": 4,
 
