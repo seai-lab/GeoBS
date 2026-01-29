@@ -10,6 +10,7 @@ gbs/ssi/__pycache__/ssi_scores.cpython-312.pyc
 gbs/ssi/__pycache__/surprisal.cpython-312.pyc
 gbs/ssi/__pycache__/utils.cpython-312.pyc
 baselines/TorchSpatial/geo_prior_data/
+baselines/TorchSpatial/pre_trained_models/
 baselines/TorchSpatial/venv
 *.pyc
 *.npy

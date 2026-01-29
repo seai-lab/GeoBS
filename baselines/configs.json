@@ -1,10 +1,10 @@
 {
     "dataset": "birdsnap",
     "eval_split": "test",
-    "load_model": false,
-    "trained_epochs": 0,
-    "debiased_epochs": 0,
-    "epochs_to_train": 1,
+    "load_model": true,
+    "trained_epochs": 30,
+    "debiased_epochs": 2,
+    "epochs_to_train": 0,
     "epochs_to_debias": 0,
     "debias_lambda": 0.0001,
 
@@ -17,13 +17,13 @@
     "sri_split_number": 4,
     
     "loc_encoder_name": "rbf",
-    "loc_encoder_params": {"spa_embed_dim": 2048, "model_type": "global"},
+    "loc_encoder_params": {"ffn_num_hidden_layers": 1, "ffn_hidden_dim": 512, "num_rbf_anchor_pts": 200, "rbf_kernel_size": 2, "spa_embed_dim": 2048, "model_type": "global"},
     "batch_size": 32,
     "batch_count_print_avg_loss": 30,
     "decoder_hidden_dim": 1024,
-    "activation_func": "LeakyReLU", 
+    "activation_func": "ReLU", 
 
-    "optimizer_lr": 1e-3,
+    "optimizer_lr": 0.01,
     "scheduler_threshold": 1e-4,
 
     "partition_k": 100,
