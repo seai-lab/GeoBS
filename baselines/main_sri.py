@@ -40,6 +40,7 @@ def main():
 
     ssi_radius = settings["ssi_radius"]
     sri_radius = settings["sri_radius"]
+    partition_mode = settings["sri_partition_mode"]
     scale_grid = settings["sri_scale_grid"]
     distance_lag = settings["sri_distance_lag"]
     split_number = settings["sri_split_number"]

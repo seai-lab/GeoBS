@@ -129,16 +129,17 @@ def test(dataloader,
 
                 logits = decoder(loc_img_interaction_embedding)
 
-                neighborhood_values = sri_perf_transformer(logits, y_n)
+                neighborhood_values = sri_perf_transformer(logits, y_n).reshape((1,-1))
 
-                print("Neighborhood values", neighborhood_values)
+                # print("Neighborhood values", neighborhood_values)
 
                 # Scale Grid SRI
                 partition_idx_list, neighborhood_idx = sri_partitioner.get_scale_grid_idx(idx.item(), scale=scale_grid)
                 for partition_idx in partition_idx_list:
-                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
-                    print("Scale grid values", partition_values)
-                    tmp_sri_sgs.append(sri_loss(partition_values, neighborhood_values).item())
+                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_loss = sri_loss(partition_values, neighborhood_values).item()
+                    tmp_sri_sgs.append(partition_loss)
+                    # print("Scale grid values:", partition_values, "Loss: ", partition_loss)
 
                 if len(tmp_sri_sgs) > 0:
                     tmp_sri_sg = np.sum(tmp_sri_sgs)
@@ -147,9 +148,10 @@ def test(dataloader,
                 # Distance Lag SRI
                 partition_idx_list, neighborhood_idx = sri_partitioner.get_distance_lag_idx(idx.item(), lag=distance_lag)
                 for partition_idx in partition_idx_list:
-                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
-                    print("Distance lag values", partition_values)
-                    tmp_sri_dls.append(sri_loss(partition_values, neighborhood_values).item())
+                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_loss = sri_loss(partition_values, neighborhood_values).item()
+                    tmp_sri_dls.append(partition_loss)
+                    # print("Distance lag values", partition_values, "Loss: ", partition_loss)
 
                 if len(tmp_sri_dls) > 0:
                     tmp_sri_dl = np.sum(tmp_sri_dls)
@@ -158,9 +160,10 @@ def test(dataloader,
                 # Direction Sector SRI
                 partition_idx_list, neighborhood_idx = sri_partitioner.get_direction_sector_idx(idx.item(), n_splits=split_number)
                 for partition_idx in partition_idx_list:
-                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx])
-                    print("Direction sector values", partition_values)
-                    tmp_sri_dss.append(sri_loss(partition_values, neighborhood_values).item())
+                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_loss = sri_loss(partition_values, neighborhood_values).item()
+                    tmp_sri_dss.append(partition_loss)
+                    # print("Direction sector values", partition_values, "Loss: ", partition_loss)
 
                 if len(tmp_sri_dss) > 0:
                     tmp_sri_ds = np.sum(tmp_sri_dss)
