@@ -13,7 +13,6 @@ def forward_with_np_array(batch_data, model):
 
 def test(dataloader,
          loc_encoder,
-         decoder,
          ssi_loss,
          ssi_partitioner,
          ssi_perf_transformer,
@@ -25,10 +24,11 @@ def test(dataloader,
          split_number,
          device):
 
-    total = 0.
-    correct_top1 = 0.
-    correct_top3 = 0.
-    rr_sum = 0.
+    total = 0
+    correct_top1 = 0
+    correct_top3 = 0
+    rr_sum = 0.0
+    rows = []
     ssis = []
     sri_sgs, sri_dls, sri_dss = [], [], []
 
@@ -38,45 +38,45 @@ def test(dataloader,
 
         img_b, loc_b, y_b = img_b.to(device), loc_b.to(device), y_b.to(device)
 
-        img_embedding = img_b
+        class_probas_based_on_image = img_b
+        # With loc_b having shape (B, loc_dim), mark rows containing any NaN as unusable.
         if loc_encoder:
-            loc_embedding = forward_with_np_array(batch_data = loc_b, model = loc_encoder)
+            valid_loc_mask = ~torch.isnan(loc_b).any(dim=1)
+            loc_embedding = torch.ones_like(class_probas_based_on_image).float()
+            if valid_loc_mask.any():
+                loc_embedding[valid_loc_mask] = loc_encoder(loc_b[valid_loc_mask])
+            class_probas_based_on_loc = torch.sigmoid(loc_embedding) # # Use Sigmoid not Softmax because each class's proba is independent for the location prior; two or more species can both be present at the same locations
         else:
-            loc_embedding = torch.ones_like(img_embedding).float()
-        loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
-
-        logits = decoder(loc_img_interaction_embedding)
+            class_probas_based_on_loc = loc_embedding = torch.ones_like(class_probas_based_on_image).float()
+        
+        class_probas = class_probas_based_on_loc * class_probas_based_on_image
 
         B = y_b.size(0)
 
-        if y_b.ndim == 2:
-            y_idx = y_b.argmax(dim=1).long()
-        else:
-            y_idx = y_b.long()
+        y_idx = y_b.long()
 
-        # Top-1
-        pred = logits.argmax(dim=1)
-        hit_at_1 = (pred == y_idx)
+        # sorted indices, descending by score
+        sorted_idx = torch.argsort(class_probas, dim=1, descending=True)   # [B, C]
 
-        # Top-3 accuracy
-        top3_idx = logits.topk(3, dim=1).indices  # [B, 3]
-        correct_top3 += (top3_idx == y_b.unsqueeze(1)).any(dim=1).sum().item()
-        hit_at_3 = (top3_idx == y_idx.unsqueeze(1)).any(dim=1)
+        # positions[b, c] = 0-based rank position of class c in sample b
+        positions = torch.argsort(sorted_idx, dim=1)                       # [B, C]
 
-        # MRR (full ranking over all classes)
-        ranking = logits.argsort(dim=1, descending=True)  # [B, C]
-        positions = ranking.argsort(dim=1)  # [B, C] where positions[b, c] = rank index (0-based)
-        true_pos0 = positions.gather(1, y_b.view(-1, 1)).squeeze(1)  # [B]
-        rr_sum += (1.0 / (true_pos0.float() + 1.0)).sum().item()
-        reciprocal_rank = 1.0 / (true_pos0.float() + 1.0)
+        # true class rank, converted to 1-based to match impl. 1
+        true_rank = positions.gather(1, y_idx.view(-1, 1)).squeeze(1) + 1  # [B]
 
-        total += y_b.size(0)
-        correct_top1 += (pred == y_b).sum().item()
+        hit_at_1 = (true_rank <= 1)
+        hit_at_3 = (true_rank <= 3)
+        reciprocal_rank = 1.0 / true_rank.float()
+
+        true_class_prob = class_probas.gather(1, y_idx.view(-1, 1)).squeeze(1)
+
+        correct_top1 += hit_at_1.sum().item()
+        correct_top3 += hit_at_3.sum().item()
+        rr_sum += reciprocal_rank.sum().item()
+        total += B
 
         lon = loc_b[:, 0]
         lat = loc_b[:, 1]
-        probas = nn.Softmax(dim=1)(logits)
-        true_class_prob = probas.gather(1, y_idx.view(-1, 1)).squeeze(1)
 
         for i in range(B):
             idx = idx_b[i]
@@ -90,17 +90,22 @@ def test(dataloader,
                 img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
                                      torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
                                      torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
-
-                img_embedding = img_n
-                if loc_encoder:
-                    loc_embedding = forward_with_np_array(batch_data = loc_n, model = loc_encoder)
-                else:
-                    loc_embedding = torch.ones_like(img_embedding).float()
-                loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
                 
-                logits = decoder(loc_img_interaction_embedding)
 
-                neighborhood_values = ssi_perf_transformer(logits, y_n)
+                # print(img_n, loc_n, y_n)
+
+                class_probas_based_on_image = img_n
+                if loc_encoder:
+                    loc_embedding = loc_encoder(loc_n)
+                    class_probas_based_on_loc = torch.sigmoid(loc_embedding) # Use Sigmoid not Softmax because each class's proba is independent for the location prior; two or more species can both be present at the same locations
+                else:
+                    class_probas_based_on_loc = loc_embedding = torch.ones_like(class_probas_based_on_image).float()
+    
+                class_probas = torch.mul(class_probas_based_on_loc, class_probas_based_on_image)
+                # print(f'class_probas: {class_probas}')
+                # print(f'max_class_probas: {class_probas.argmax(dim = 1)}')
+
+                neighborhood_values = ssi_perf_transformer(class_probas, y_n)
 
                 tmp_ssi, ignore_ratio = ssi_loss(neighborhood_points, neighborhood_values)
                 ignore_ratio = float(ignore_ratio)
@@ -120,23 +125,23 @@ def test(dataloader,
                                     torch.stack([dataloader.dataset[i][2].to(device) for i in neighborhood_idx]),
                                     torch.stack([dataloader.dataset[i][3].to(device) for i in neighborhood_idx]))
 
-                img_embedding = img_n
+                class_probas_based_on_image = img_n
                 if loc_encoder:
-                    loc_embedding = forward_with_np_array(batch_data=loc_n, model=loc_encoder)
+                    loc_embedding = loc_encoder(loc_n)
+                    class_probas_based_on_loc = torch.sigmoid(loc_embedding) # Use Sigmoid not Softmax because each class's proba is independent for the location prior; two or more species can both be present at the same locations
                 else:
-                    loc_embedding = torch.ones_like(img_embedding).float()
-                loc_img_interaction_embedding = torch.mul(loc_embedding, img_embedding)
+                    class_probas_based_on_loc = loc_embedding = torch.ones_like(class_probas_based_on_image).float()
+                
+                class_probas = torch.mul(class_probas_based_on_loc, class_probas_based_on_image)
 
-                logits = decoder(loc_img_interaction_embedding)
-
-                neighborhood_values = sri_perf_transformer(logits, y_n).reshape((1,-1))
+                neighborhood_values = sri_perf_transformer(class_probas, y_n).reshape((1,-1))
 
                 # print("Neighborhood values", neighborhood_values)
 
                 # Scale Grid SRI
                 partition_idx_list, neighborhood_idx = sri_partitioner.get_scale_grid_idx(idx.item(), scale=scale_grid)
                 for partition_idx in partition_idx_list:
-                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_values = sri_perf_transformer(class_probas[partition_idx], y_n[partition_idx]).reshape((1,-1))
                     partition_loss = sri_loss(partition_values, neighborhood_values).item()
                     tmp_sri_sgs.append(partition_loss)
                     # print("Scale grid values:", partition_values, "Loss: ", partition_loss)
@@ -148,7 +153,7 @@ def test(dataloader,
                 # Distance Lag SRI
                 partition_idx_list, neighborhood_idx = sri_partitioner.get_distance_lag_idx(idx.item(), lag=distance_lag)
                 for partition_idx in partition_idx_list:
-                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_values = sri_perf_transformer(class_probas[partition_idx], y_n[partition_idx]).reshape((1,-1))
                     partition_loss = sri_loss(partition_values, neighborhood_values).item()
                     tmp_sri_dls.append(partition_loss)
                     # print("Distance lag values", partition_values, "Loss: ", partition_loss)
@@ -160,7 +165,7 @@ def test(dataloader,
                 # Direction Sector SRI
                 partition_idx_list, neighborhood_idx = sri_partitioner.get_direction_sector_idx(idx.item(), n_splits=split_number)
                 for partition_idx in partition_idx_list:
-                    partition_values = sri_perf_transformer(logits[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_values = sri_perf_transformer(class_probas[partition_idx], y_n[partition_idx]).reshape((1,-1))
                     partition_loss = sri_loss(partition_values, neighborhood_values).item()
                     tmp_sri_dss.append(partition_loss)
                     # print("Direction sector values", partition_values, "Loss: ", partition_loss)
@@ -177,7 +182,7 @@ def test(dataloader,
                 "hit@1": int(hit_at_1[i].item()),
                 "hit@3": int(hit_at_3[i].item()),
                 "ssi": tmp_ssi,
-                # "ignore_ratio": ignore_ratio
+                "ignore_ratio": ignore_ratio,
                 "sri_sg": tmp_sri_sg,
                 "sri_dl": tmp_sri_dl,
                 "sri_ds": tmp_sri_ds
