@@ -1,6 +1,7 @@
 # Run this under the directory that contains TorchSpatial, not under TorchSpatial itself
 # This file is classification only
 
+import random
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -14,7 +15,7 @@ from TorchSpatial.modules.encoder_selector import get_loc_encoder
 from TorchSpatial.modules.models import ThreeLayerMLP
 import TorchSpatial.utils.datasets as data_import
 import TorchSpatial.utils.eval_helper as eval_helper
-from TorchSpatial.utils.losses import embedding_loss
+from TorchSpatial.utils.loss_registry import get_loss
 from TorchSpatial.modules.models import LocationEncoder
 
 from gbsloss import SSIPartitioner, BinaryPerformanceTransformer, SSILoss, SRIPartitioner, SoftHistogramPerformanceTransformer, SRILoss
@@ -22,9 +23,6 @@ from gbsloss import SSIPartitioner, BinaryPerformanceTransformer, SSILoss, SRIPa
 from pathlib import Path
 import numpy as np
 import pandas as pd
-
-import torch
-import numpy as np
 
 import json
 
@@ -35,6 +33,18 @@ def main():
     # - import configs
     with open("configs.json", "r") as f:
         settings = json.load(f)
+
+    # --- reproducibility / seeding ---
+    seed = settings.get("seed", None)
+    deterministic = settings.get("deterministic", False)
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
     dataset = settings["dataset"]
     eval_split = settings["eval_split"]
@@ -103,8 +113,8 @@ def main():
         load_cnn_features=True,
         load_cnn_features_train=True)
 
-    img_tr = torch.Tensor(all_data["train_preds"]) # shape=(43426, 500)
-    loc_tr = torch.Tensor(all_data["train_locs"]) # shape=(N, 2)
+    img_tr = torch.Tensor(all_data["train_preds"]).float() # shape=(43426, 500)
+    loc_tr = torch.Tensor(all_data["train_locs"]).float() # shape=(N, 2) lon/lat in degrees
     y_tr = torch.Tensor(all_data["train_classes"]).long() # shape=(N, )
     user_tr = torch.Tensor(all_data["train_users"]) # shape=(42490, )
     unique_users_count = len(set(all_data["train_users"])) # 5763; also cannot do len(set(torch.Tensorall_data["train_users"])))
@@ -112,10 +122,18 @@ def main():
     if loc_encoder_name == "rbf":
         loc_encoder_params["train_locs"] = all_data["train_locs"]
     
-    img_te = torch.Tensor(all_data["val_preds"]) # shape=(2262, 500)
-    loc_te = torch.Tensor(all_data["val_locs"]) # shape=(N, 2)
+    img_te = torch.Tensor(all_data["val_preds"]).float() # shape=(2262, 500)
+    loc_te = torch.Tensor(all_data["val_locs"]).float() # shape=(N, 2) lon/lat in degrees
     y_te = torch.Tensor(all_data["val_classes"]).long() # shape=(N, )
     user_te = torch.Tensor(all_data["val_users"]) # shape=(2217, )
+
+    # --- sanity checks ---
+    assert loc_tr.dtype == torch.float32 and loc_tr.ndim == 2 and loc_tr.shape[1] == 2, \
+        f"loc_tr must be float32 (N,2); got {loc_tr.dtype} {loc_tr.shape}"
+    assert loc_te.dtype == torch.float32 and loc_te.ndim == 2 and loc_te.shape[1] == 2, \
+        f"loc_te must be float32 (N,2); got {loc_te.dtype} {loc_te.shape}"
+    assert y_tr.dtype == torch.int64, f"y_tr must be long; got {y_tr.dtype}"
+    assert y_te.dtype == torch.int64, f"y_te must be long; got {y_te.dtype}"
 
     idx_tr = np.arange(img_tr.shape[0])
     idx_te = np.arange(img_te.shape[0])
@@ -143,8 +161,10 @@ def main():
 
     # - model
     # decoder = ThreeLayerMLP(input_dim = embed_dim, hidden_dim = decoder_hidden_dim, category_count = num_classes, activation_func = activation_func).to(device)
-    # - Criterion
-    criterion = embedding_loss
+    # - Criterion (select via registry; default to "embedding_loss" for backwards compatibility)
+    train_loss_name = settings.get("train_loss_name", "embedding_loss")
+    train_loss_params = settings.get("train_loss_params", {})
+    criterion = get_loss(train_loss_name, train_loss_params if train_loss_params else None)
 
     # - Optimizer
     if loc_encoder:
@@ -198,7 +218,7 @@ def main():
     ssi_loss = SSILoss()
     sri_loss = SRILoss()
 
-    lats, lons = np.radians(loc_tr[:,1]), np.radians(loc_tr[:,0])
+    lats, lons = np.radians(loc_tr[:,1].numpy()), np.radians(loc_tr[:,0].numpy())
     # ssi_partitioner = SSIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=ssi_radius)
     # ssi_perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
     sri_partitioner = SRIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=sri_radius)
@@ -269,7 +289,7 @@ def main():
 
     with torch.no_grad():
 
-        lats, lons = np.radians(loc_te[:, 1]), np.radians(loc_te[:, 0])
+        lats, lons = np.radians(loc_te[:, 1].numpy()), np.radians(loc_te[:, 0].numpy())
         # test_ssi_partitioner = SSIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=ssi_radius)
         # test_ssi_perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
         # test_sri_partitioner = SRIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=sri_radius)
@@ -289,7 +309,9 @@ def main():
                     device)
 
     df = pd.DataFrame(rows)
-    df.to_csv(f"TorchSpatial/eval_results/eval_{dataset}_{meta_type}_{eval_split}_{loc_encoder_name}_trained-{trained_epochs}_debiased-{debiased_epochs}.csv", index=True)
+    eval_path = Path(f"TorchSpatial/eval_results/eval_{dataset}_{meta_type}_{eval_split}_{loc_encoder_name}_trained-{trained_epochs}_debiased-{debiased_epochs}.csv")
+    eval_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(eval_path, index=True)
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
