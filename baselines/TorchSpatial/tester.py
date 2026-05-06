@@ -22,7 +22,8 @@ def test(dataloader,
         #  scale_grid,
         #  distance_lag,
         #  split_number,
-        # device):
+        # device
+        ):
 
     total = 0
     correct_top1 = 0
@@ -119,6 +120,7 @@ def test(dataloader,
 
         #     neighborhood_idx, _, _ = sri_partitioner.get_neighborhood_idx(idx.item())
 
+<<<<<<< HEAD
         #     if neighborhood_idx.shape[0] > 50:
 
         #         img_n, loc_n, y_n = (torch.stack([dataloader.dataset[i][1].to(device) for i in neighborhood_idx]),
@@ -133,10 +135,32 @@ def test(dataloader,
         #             class_probas_based_on_loc = loc_embedding = torch.ones_like(class_probas_based_on_image).float()
                 
         #         class_probas = torch.mul(class_probas_based_on_loc, class_probas_based_on_image)
+=======
+                class_probas_based_on_image = img_n
+                if loc_encoder:
+                    loc_embedding = loc_encoder(loc_n)
+                    class_probas_based_on_loc = torch.sigmoid(loc_embedding) # Use Sigmoid not Softmax because each class's proba is independent for the location prior; two or more species can both be present at the same locations
+                else:
+                    class_probas_based_on_loc = loc_embedding = torch.ones_like(class_probas_based_on_image).float()
+                
+                class_probas = torch.mul(class_probas_based_on_loc, class_probas_based_on_image)
+
+                neighborhood_values = sri_perf_transformer(class_probas, y_n).reshape((1,-1))
+>>>>>>> 4672e8beb78305b366a74a9664cb747e2b727614
 
         #         neighborhood_values = sri_perf_transformer(class_probas, y_n).reshape((1,-1))
 
+<<<<<<< HEAD
         #         # print("Neighborhood values", neighborhood_values)
+=======
+                # Scale Grid SRI
+                partition_idx_list, neighborhood_idx = sri_partitioner.get_scale_grid_idx(idx.item(), scale=scale_grid)
+                for partition_idx in partition_idx_list:
+                    partition_values = sri_perf_transformer(class_probas[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_loss = sri_loss(partition_values, neighborhood_values).item()
+                    tmp_sri_sgs.append(partition_loss)
+                    # print("Scale grid values:", partition_values, "Loss: ", partition_loss)
+>>>>>>> 4672e8beb78305b366a74a9664cb747e2b727614
 
         #         # Scale Grid SRI
         #         partition_idx_list, neighborhood_idx = sri_partitioner.get_scale_grid_idx(idx.item(), scale=scale_grid)
@@ -146,9 +170,19 @@ def test(dataloader,
         #             tmp_sri_sgs.append(partition_loss)
         #             # print("Scale grid values:", partition_values, "Loss: ", partition_loss)
 
+<<<<<<< HEAD
         #         if len(tmp_sri_sgs) > 0:
         #             tmp_sri_sg = np.sum(tmp_sri_sgs)
         #             sri_sgs.append(tmp_sri_sg)
+=======
+                # Distance Lag SRI
+                partition_idx_list, neighborhood_idx = sri_partitioner.get_distance_lag_idx(idx.item(), lag=distance_lag)
+                for partition_idx in partition_idx_list:
+                    partition_values = sri_perf_transformer(class_probas[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_loss = sri_loss(partition_values, neighborhood_values).item()
+                    tmp_sri_dls.append(partition_loss)
+                    # print("Distance lag values", partition_values, "Loss: ", partition_loss)
+>>>>>>> 4672e8beb78305b366a74a9664cb747e2b727614
 
         #         # Distance Lag SRI
         #         partition_idx_list, neighborhood_idx = sri_partitioner.get_distance_lag_idx(idx.item(), lag=distance_lag)
@@ -158,9 +192,19 @@ def test(dataloader,
         #             tmp_sri_dls.append(partition_loss)
         #             # print("Distance lag values", partition_values, "Loss: ", partition_loss)
 
+<<<<<<< HEAD
         #         if len(tmp_sri_dls) > 0:
         #             tmp_sri_dl = np.sum(tmp_sri_dls)
         #             sri_dls.append(tmp_sri_dl)
+=======
+                # Direction Sector SRI
+                partition_idx_list, neighborhood_idx = sri_partitioner.get_direction_sector_idx(idx.item(), n_splits=split_number)
+                for partition_idx in partition_idx_list:
+                    partition_values = sri_perf_transformer(class_probas[partition_idx], y_n[partition_idx]).reshape((1,-1))
+                    partition_loss = sri_loss(partition_values, neighborhood_values).item()
+                    tmp_sri_dss.append(partition_loss)
+                    # print("Direction sector values", partition_values, "Loss: ", partition_loss)
+>>>>>>> 4672e8beb78305b366a74a9664cb747e2b727614
 
         #         # Direction Sector SRI
         #         partition_idx_list, neighborhood_idx = sri_partitioner.get_direction_sector_idx(idx.item(), n_splits=split_number)
@@ -181,11 +225,19 @@ def test(dataloader,
                 "reciprocal_rank": float(reciprocal_rank[i].item()),
                 "hit@1": int(hit_at_1[i].item()),
                 "hit@3": int(hit_at_3[i].item()),
+<<<<<<< HEAD
                 #"ssi": tmp_ssi,
                 # "ignore_ratio": ignore_ratio
                 #"sri_sg": tmp_sri_sg,
                 #"sri_dl": tmp_sri_dl,
                 #"sri_ds": tmp_sri_ds
+=======
+                "ssi": tmp_ssi,
+                "ignore_ratio": ignore_ratio,
+                "sri_sg": tmp_sri_sg,
+                "sri_dl": tmp_sri_dl,
+                "sri_ds": tmp_sri_ds
+>>>>>>> 4672e8beb78305b366a74a9664cb747e2b727614
             })
 
     # Separate block because need to use total
