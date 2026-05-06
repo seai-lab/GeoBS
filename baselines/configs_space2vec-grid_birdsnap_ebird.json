@@ -1,19 +1,11 @@
 {
     "dataset": "birdsnap",
     "eval_split": "test",
-    "load_model": true,
-    "trained_epochs": 30,
+    "load_model": false,
+    "trained_epochs": 0,
     "debiased_epochs": 0,
-    "epochs_to_train": 1,
-    "epochs_to_debias": 1,
-    "debias_lambda": 0.0001,
-
-    "ssi_radius": 0.01,
-    "sri_radius": 0.1,
-    "sri_partition_mode": "ScaleGrid",
-    "sri_scale_grid": 0.05,
-    "sri_distance_lag": 0.02,
-    "sri_split_number": 4,
+    "epochs_to_train": 30,
+    "epochs_to_debias": 0,
     
     "loc_encoder_name": "Space2Vec-grid",
     "loc_encoder_params": {
@@ -23,7 +15,7 @@
         "max_radius": 360.0,
         "min_radius": 0.1,
         "freq_init": "geometric",
-        "device": "cuda",
+        "device": "cpu",
         "ffn_act": "leakyrelu",
         "ffn_num_hidden_layers": 1,
         "ffn_dropout_rate": 0.5,
@@ -33,14 +25,14 @@
         "ffn_context_str": "GridCellSpatialRelationEncoder"
     },
 
+    "class_and_user_emb_dims": 256,
+
     "batch_size": 32,
     "batch_count_print_avg_loss": 30,
     "activation_func": "ReLU", 
 
-    "optimizer_lr": 0.001,
-    "optimizer_weight_decay": 0.0001,
-
-    "class_and_user_emb_dims": 256,
+    "optimizer_lr": 0.01,
+    "optimizer_weight_decay": 0.98,
 
     "partition_k": 400,
     "BinaryPerformanceTransformer_thres":0.5,

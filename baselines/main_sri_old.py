@@ -29,6 +29,7 @@ import numpy as np
 import json
 
 import warnings
+import time
 
 def main():
 
@@ -62,8 +63,6 @@ def main():
 
     optimizer_lr = settings["optimizer_lr"]
     # scheduler_threshold = settings["scheduler_threshold"]
-
-    class_and_user_emb_dims = settings["class_and_user_emb_dims"]
 
     partition_k = settings["partition_k"]
     BinaryPerformanceTransformer_thres = settings["BinaryPerformanceTransformer_thres"]
@@ -103,19 +102,18 @@ def main():
         load_cnn_features=True,
         load_cnn_features_train=True)
 
-    img_tr = torch.Tensor(all_data["train_preds"]) # shape=(43426, 500)
-    loc_tr = torch.Tensor(all_data["train_locs"]) # shape=(N, 2)
+    img_tr = torch.Tensor(all_data["train_preds"]).long() # shape=(43426, 500)
+    #loc_tr = torch.Tensor(all_data["train_locs"]).long() # shape=(N, 2)
+    loc_tr = torch.Tensor(all_data["train_locs"][:, [1, 0]]).long() # swap to (lat, lon)
     y_tr = torch.Tensor(all_data["train_classes"]).long() # shape=(N, )
-    user_tr = torch.Tensor(all_data["train_users"]) # shape=(42490, )
-    unique_users_count = len(set(all_data["train_users"])) # 5763; also cannot do len(set(torch.Tensorall_data["train_users"])))
     
     if loc_encoder_name == "rbf":
         loc_encoder_params["train_locs"] = all_data["train_locs"]
     
-    img_te = torch.Tensor(all_data["val_preds"]) # shape=(2262, 500)
-    loc_te = torch.Tensor(all_data["val_locs"]) # shape=(N, 2)
+    img_te = torch.Tensor(all_data["val_preds"]).long() # shape=(2262, 500)
+    #loc_te = torch.Tensor(all_data["val_locs"]).long() # shape=(N, 2)
+    loc_te = torch.Tensor(all_data["val_locs"][:, [1, 0]]).long() # swap to (lat, lon)
     y_te = torch.Tensor(all_data["val_classes"]).long() # shape=(N, )
-    user_te = torch.Tensor(all_data["val_users"]) # shape=(2217, )
 
     idx_tr = np.arange(img_tr.shape[0])
     idx_te = np.arange(img_te.shape[0])
@@ -135,8 +133,8 @@ def main():
             spa_enc = get_loc_encoder(name = loc_encoder_name, overrides = loc_encoder_params).to(device), # "device": device is needed if you defined device = 'cpu' above and don't have cuda setup to prevent "AssertionError: Torch not compiled with CUDA enabled", because the default is device="cuda"
             num_inputs=coord_dim, # num_inputs: input embedding dimension
             num_classes=num_classes, # num_classes: number of categories we want to classify
-            num_filts=class_and_user_emb_dims, # num_filts: hidden embedding dimension
-            num_users=unique_users_count, # Assume all images are taken by 1 user
+            num_filts=500, # num_filts: hidden embedding dimension
+            num_users=1, # Assume all images are taken by 1 user
         ).to(device)
     else:
         loc_encoder = None
@@ -165,44 +163,51 @@ def main():
 
         ckpt = torch.load(model_path, map_location=device)
         if loc_encoder:
-            try:
-                loc_encoder.load_state_dict(ckpt["loc_encoder"])
-                print(">>> Loaded new version checkpoint <<<")
-            except KeyError:
-                loc_encoder.load_state_dict(ckpt["state_dict"])
-                print(">>> Loaded original TorchSpatial checkpoint <<<")
-
-        # - optimizer - 
-        optimizer.load_state_dict(ckpt["optimizer"])
-
-        # - trained_epochs - 
-        trained_epochs = ckpt.get("epoch", 0) - 1 # Old epoch is 31 when trained for 30
-        if trained_epochs == -1: # Not old checkpoint
-            trained_epochs = ckpt["trained_epochs"] # New epoch can be loaded
-
-        # - debiased_epochs -
-        debiased_epochs = ckpt.get("debiased_epochs", 0) # Old: "debiased_epochs" not present, use 0; New: "debiased_epochs" present
-
-        # - epochs_order - 
-        epochs_order = ckpt.get("epochs_order", [("train", trained_epochs)]) # Old was only trained regularly, never debiased
-
-        # - old_params - 
-        old_params = ckpt.get("params", None)
+            loc_encoder.load_state_dict(ckpt["loc_encoder"])
+        try:
+            optimizer.load_state_dict(ckpt["optimizer"])
+        except KeyError:
+            optimizer.load_state_dict(ckpt["state_dict"])
+        trained_epochs = ckpt["trained_epochs"]
+        debiased_epochs = ckpt["debiased_epochs"]
+        epochs_order = ckpt["epochs_order"]
 
         print(f"Checkpoint loaded from {model_path}; trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
 
     if loc_encoder:
         loc_encoder.train()
 
-    ## Initialize gbs loss meta
+    ### Initialize gbs loss meta
+    # Performance loading issue, too slow. Time each step. 
+    print("Initializing GBS loss meta...")
+    start_time = time.time()
+    
     ssi_loss = SSILoss()
+    print(f"  SSILoss created in {time.time() - start_time:.2f}s")
+    
+    start_time = time.time()
     sri_loss = SRILoss()
+    print(f"  SRILoss created in {time.time() - start_time:.2f}s")
 
+    start_time = time.time()
     lats, lons = np.radians(loc_tr[:,1]), np.radians(loc_tr[:,0])
-    # ssi_partitioner = SSIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=ssi_radius)
-    # ssi_perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
+    print(f"  Coordinates converted to radians in {time.time() - start_time:.2f}s")
+    
+    start_time = time.time()
+    ssi_partitioner = SSIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=ssi_radius)
+    print(f"  SSIPartitioner created in {time.time() - start_time:.2f}s")
+    
+    start_time = time.time()
+    ssi_perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
+    print(f"  BinaryPerformanceTransformer created in {time.time() - start_time:.2f}s")
+    
+    start_time = time.time()
     sri_partitioner = SRIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=sri_radius)
+    print(f"  SRIPartitioner created in {time.time() - start_time:.2f}s")
+    
+    start_time = time.time()
     sri_perf_transformer = SoftHistogramPerformanceTransformer(bins=SoftHistogramPerformanceTransformer_bins)
+    print(f"  SoftHistogramPerformanceTransformer created in {time.time() - start_time:.2f}s")
 
     train(epochs=epochs_to_train,
         batch_count_print_avg_loss=batch_count_print_avg_loss,
@@ -240,28 +245,20 @@ def main():
         epochs_order.append(("debias", epochs_to_debias))
 
     # - save model
-    model_path = f"TorchSpatial/pre_trained_models/sri_debiased/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
+    model_path = f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
     path = Path(model_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    if epochs_to_train or epochs_to_debias:
-        if loc_encoder:
-            torch.save({
-                "trained_epochs": trained_epochs,
-                "debiased_epochs": debiased_epochs,
-                "epochs_order": epochs_order,
-                "loc_encoder": loc_encoder.state_dict(),
-                "optimizer": optimizer.state_dict(),
-            }, path)
-        else:
-            torch.save({
-                "trained_epochs": trained_epochs,
-                "debiased_epochs": debiased_epochs,
-                "epochs_order": epochs_order,
-                # "optimizer": optimizer.state_dict(),
-            }, path)
+    if loc_encoder:
+        torch.save({
+            "trained_epochs": trained_epochs,
+            "debiased_epochs": debiased_epochs,
+            "epochs_order": epochs_order,
+            "loc_encoder": loc_encoder.state_dict(),
+            "optimizer": optimizer.state_dict(),
+        }, path)
 
-    print(f"Model saved as {model_path}; in total, trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
+        print(f"Model saved as {model_path}; in total, trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
     
     # - test
     if loc_encoder:
@@ -270,22 +267,22 @@ def main():
     with torch.no_grad():
 
         lats, lons = np.radians(loc_te[:, 1]), np.radians(loc_te[:, 0])
-        # test_ssi_partitioner = SSIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=ssi_radius)
-        # test_ssi_perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
-        # test_sri_partitioner = SRIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=sri_radius)
-        # test_sri_perf_transformer = SoftHistogramPerformanceTransformer(bins=SoftHistogramPerformanceTransformer_bins)
+        test_ssi_partitioner = SSIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=ssi_radius)
+        test_ssi_perf_transformer = BinaryPerformanceTransformer(thres=BinaryPerformanceTransformer_thres)
+        test_sri_partitioner = SRIPartitioner(np.array([lats, lons]).T, k=partition_k, radius=sri_radius)
+        test_sri_perf_transformer = SoftHistogramPerformanceTransformer(bins=SoftHistogramPerformanceTransformer_bins)
 
         rows = test(test_loader,
                     loc_encoder,
-                    # ssi_loss,
-                    # test_ssi_partitioner,
-                    # test_ssi_perf_transformer,
-                    # sri_loss,
-                    # test_sri_partitioner,
-                    # test_sri_perf_transformer,
-                    # scale_grid,
-                    # distance_lag,
-                    # split_number,
+                    ssi_loss,
+                    test_ssi_partitioner,
+                    test_ssi_perf_transformer,
+                    sri_loss,
+                    test_sri_partitioner,
+                    test_sri_perf_transformer,
+                    scale_grid,
+                    distance_lag,
+                    split_number,
                     device)
 
     df = pd.DataFrame(rows)

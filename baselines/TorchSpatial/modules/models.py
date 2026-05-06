@@ -469,9 +469,9 @@ class LocationEncoder(nn.Module):
         '''
         Args:
             spa_enc: the spatial encoder
-            num_inputs: input embedding dimention
+            num_inputs: input embedding dimension
             num_classes: number of categories we want to classify
-            num_filts: hidden embedding dimention
+            num_filts: hidden embedding dimension
         '''
         super(LocationEncoder, self).__init__()
         self.spa_enc = spa_enc

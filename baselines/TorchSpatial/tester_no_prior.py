@@ -22,7 +22,8 @@ def test(dataloader,
         #  scale_grid,
         #  distance_lag,
         #  split_number,
-        # device):
+        # device
+):
 
     total = 0
     correct_top1 = 0
@@ -36,7 +37,7 @@ def test(dataloader,
 
     for idx_b, img_b, loc_b, y_b in dataloader:
 
-        img_b, loc_b, y_b = img_b.to(device), loc_b.to(device), y_b.to(device)
+        # img_b, loc_b, y_b = img_b.to(device), loc_b.to(device), y_b.to(device)
 
         class_probas_based_on_image = img_b
         # With loc_b having shape (B, loc_dim), mark rows containing any NaN as unusable.

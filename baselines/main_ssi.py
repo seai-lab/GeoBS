@@ -1,4 +1,5 @@
 # Run this under the directory that contains TorchSpatial, not under TorchSpatial itself
+# This file is classification only
 
 import torch
 import torch.nn as nn
@@ -13,6 +14,8 @@ from TorchSpatial.modules.encoder_selector import get_loc_encoder
 from TorchSpatial.modules.models import ThreeLayerMLP
 import TorchSpatial.utils.datasets as data_import
 import TorchSpatial.utils.eval_helper as eval_helper
+from TorchSpatial.utils.losses import embedding_loss
+from TorchSpatial.modules.models import LocationEncoder
 
 from gbsloss import SSIPartitioner, BinaryPerformanceTransformer, SSILoss, SRIPartitioner, SoftHistogramPerformanceTransformer, SRILoss
 
@@ -53,17 +56,20 @@ def main():
     loc_encoder_params = settings["loc_encoder_params"]
     batch_size = settings["batch_size"]
     batch_count_print_avg_loss = settings["batch_count_print_avg_loss"]
-    decoder_hidden_dim = settings["decoder_hidden_dim"]
+    # decoder_hidden_dim = settings["decoder_hidden_dim"]
     activation_func = settings["activation_func"]
 
     optimizer_lr = settings["optimizer_lr"]
-    scheduler_threshold = settings["scheduler_threshold"]
+    # scheduler_threshold = settings["scheduler_threshold"]
+
+    class_and_user_emb_dims = settings["class_and_user_emb_dims"]
 
     partition_k = settings["partition_k"]
     BinaryPerformanceTransformer_thres = settings["BinaryPerformanceTransformer_thres"]
     SoftHistogramPerformanceTransformer_bins = settings["SoftHistogramPerformanceTransformer_bins"]
 
     params = settings[dataset]["params"]
+    
     task = settings[dataset]["task"]
     meta_type = params.get("meta_type", "")
     img_dim = settings[dataset]["img_dim"]
@@ -73,6 +79,10 @@ def main():
     eval_remove_invalid = settings[dataset]["eval_remove_invalid"]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    params['spa_enc_type'] = loc_encoder_name
+    params['num_classes'] = num_classes
+    params['train_loss'] = []
+    params['device'] = device
 
     loc_dim = img_dim
     
@@ -92,16 +102,19 @@ def main():
         load_cnn_features=True,
         load_cnn_features_train=True)
 
-    img_tr = torch.Tensor(all_data["train_feats"]).long() # shape=(N, 2048)
-    loc_tr = torch.Tensor(all_data["train_locs"]).long() # shape=(N, 2)
+    img_tr = torch.Tensor(all_data["train_preds"]) # shape=(43426, 500)
+    loc_tr = torch.Tensor(all_data["train_locs"]) # shape=(N, 2)
     y_tr = torch.Tensor(all_data["train_classes"]).long() # shape=(N, )
+    user_tr = torch.Tensor(all_data["train_users"]) # shape=(42490, )
+    unique_users_count = len(set(all_data["train_users"])) # 5763; also cannot do len(set(torch.Tensorall_data["train_users"])))
     
     if loc_encoder_name == "rbf":
         loc_encoder_params["train_locs"] = all_data["train_locs"]
     
-    img_te = torch.Tensor(all_data["val_feats"]).long() # shape=(N, 2048)
-    loc_te = torch.Tensor(all_data["val_locs"]).long() # shape=(N, 2)
+    img_te = torch.Tensor(all_data["val_preds"]) # shape=(2262, 500)
+    loc_te = torch.Tensor(all_data["val_locs"]) # shape=(N, 2)
     y_te = torch.Tensor(all_data["val_classes"]).long() # shape=(N, )
+    user_te = torch.Tensor(all_data["val_users"]) # shape=(2217, )
 
     idx_tr = np.arange(img_tr.shape[0])
     idx_te = np.arange(img_te.shape[0])
@@ -117,25 +130,32 @@ def main():
 
     # - location encoder
     if loc_encoder_name != "no_prior":
-        loc_encoder = get_loc_encoder(name = loc_encoder_name, overrides = loc_encoder_params).to(device) # "device": device is needed if you defined device = 'cpu' above and don't have cuda setup to prevent "AssertionError: Torch not compiled with CUDA enabled", because the default is device="cuda"
+        loc_encoder = LocationEncoder(
+            spa_enc = get_loc_encoder(name = loc_encoder_name, overrides = loc_encoder_params).to(device), # "device": device is needed if you defined device = 'cpu' above and don't have cuda setup to prevent "AssertionError: Torch not compiled with CUDA enabled", because the default is device="cuda"
+            num_inputs=coord_dim, # num_inputs: input embedding dimension
+            num_classes=num_classes, # num_classes: number of categories we want to classify
+            num_filts=class_and_user_emb_dims, # num_filts: hidden embedding dimension
+            num_users=unique_users_count, # Assume all images are taken by 1 user
+        ).to(device)
     else:
         loc_encoder = None
 
     # - model
-    decoder = ThreeLayerMLP(input_dim = embed_dim, hidden_dim = decoder_hidden_dim, category_count = num_classes, activation_func = activation_func).to(device)
+    # decoder = ThreeLayerMLP(input_dim = embed_dim, hidden_dim = decoder_hidden_dim, category_count = num_classes, activation_func = activation_func).to(device)
     # - Criterion
-    criterion = nn.CrossEntropyLoss()
+    criterion = embedding_loss
 
     # - Optimizer
     if loc_encoder:
-        optimizer = Adam(params = list(loc_encoder.parameters()) + list(decoder.parameters()), lr = optimizer_lr)
+        optimizer = Adam(params = loc_encoder.parameters(), lr = optimizer_lr)
+        # optimizer = Adam(params = list(loc_encoder.parameters()) + list(decoder.parameters()), lr = optimizer_lr)
     else:
-        optimizer = Adam(params = list(decoder.parameters()), lr = optimizer_lr)
+        optimizer = None
 
     # - Scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2, threshold=scheduler_threshold
-    )
+    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #     optimizer, mode="min", factor=0.5, patience=2, threshold=scheduler_threshold
+    # )
 
     epochs_order = []
 
@@ -144,21 +164,36 @@ def main():
 
         ckpt = torch.load(model_path, map_location=device)
         if loc_encoder:
-            loc_encoder.load_state_dict(ckpt["loc_encoder"])
-        decoder.load_state_dict(ckpt["decoder"])
+            try:
+                loc_encoder.load_state_dict(ckpt["loc_encoder"])
+                print(">>> Loaded new version checkpoint <<<")
+            except KeyError:
+                loc_encoder.load_state_dict(ckpt["state_dict"])
+                print(">>> Loaded original TorchSpatial checkpoint <<<")
+
+        # - optimizer - 
         optimizer.load_state_dict(ckpt["optimizer"])
-        trained_epochs = ckpt["trained_epochs"]
-        debiased_epochs = ckpt["debiased_epochs"]
-        epochs_order = ckpt["epochs_order"]
-        scheduler.load_state_dict(ckpt["scheduler"])
+
+        # - trained_epochs - 
+        trained_epochs = ckpt.get("epoch", 0) - 1 # Old epoch is 31 when trained for 30
+        if trained_epochs == -1: # Not old checkpoint
+            trained_epochs = ckpt["trained_epochs"] # New epoch can be loaded
+
+        # - debiased_epochs -
+        debiased_epochs = ckpt.get("debiased_epochs", 0) # Old: "debiased_epochs" not present, use 0; New: "debiased_epochs" present
+
+        # - epochs_order - 
+        epochs_order = ckpt.get("epochs_order", [("train", trained_epochs)]) # Old was only trained regularly, never debiased
+
+        # - old_params - 
+        old_params = ckpt.get("params", None)
 
         print(f"Checkpoint loaded from {model_path}; trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
 
     if loc_encoder:
         loc_encoder.train()
-    decoder.train()
 
-    ### Initialize gbs loss meta
+    ## Initialize gbs loss meta
     ssi_loss = SSILoss()
     sri_loss = SRILoss()
 
@@ -172,10 +207,9 @@ def main():
         batch_count_print_avg_loss=batch_count_print_avg_loss,
         loc_encoder=loc_encoder,
         dataloader=train_loader,
-        decoder=decoder,
+        params = params,
         criterion=criterion,
         optimizer=optimizer,
-        scheduler=scheduler,
         device=device)
     
     if epochs_to_train:
@@ -187,14 +221,13 @@ def main():
         batch_count_print_avg_loss = batch_count_print_avg_loss,
         loc_encoder = loc_encoder,
         dataloader = train_loader,
-        decoder = decoder,
+        params = params,
         criterion = criterion,
         debias_loss = ssi_loss,
         debias_lambda = debias_lambda,
         partitioner = ssi_partitioner,
         perf_transformer = ssi_perf_transformer,
         optimizer = optimizer,
-        scheduler = scheduler,
         device = device)
         
     if epochs_to_debias:
@@ -202,36 +235,32 @@ def main():
         epochs_order.append(("debias", epochs_to_debias))
 
     # - save model
-    model_path = f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
+    model_path = f"TorchSpatial/pre_trained_models/ssi_debiased/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
     path = Path(model_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    if loc_encoder:
-        torch.save({
-            "trained_epochs": trained_epochs,
-            "debiased_epochs": debiased_epochs,
-            "epochs_order": epochs_order,
-            "loc_encoder": loc_encoder.state_dict(),
-            "decoder": decoder.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "scheduler": scheduler.state_dict()
-        }, path)
-    else:
-        torch.save({
-            "trained_epochs": trained_epochs,
-            "debiased_epochs": debiased_epochs,
-            "epochs_order": epochs_order,
-            "decoder": decoder.state_dict(),
-            "optimizer": optimizer.state_dict(),
-            "scheduler": scheduler.state_dict()
-        }, path)
+    if epochs_to_train or epochs_to_debias:
+        if loc_encoder:
+            torch.save({
+                "trained_epochs": trained_epochs,
+                "debiased_epochs": debiased_epochs,
+                "epochs_order": epochs_order,
+                "loc_encoder": loc_encoder.state_dict(),
+                "optimizer": optimizer.state_dict(),
+            }, path)
+        else:
+            torch.save({
+                "trained_epochs": trained_epochs,
+                "debiased_epochs": debiased_epochs,
+                "epochs_order": epochs_order,
+                # "optimizer": optimizer.state_dict(),
+            }, path)
 
     print(f"Model saved as {model_path}; in total, trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
     
     # - test
     if loc_encoder:
         loc_encoder.eval()
-    decoder.eval()
 
     with torch.no_grad():
 
@@ -243,7 +272,6 @@ def main():
 
         rows = test(test_loader,
                     loc_encoder,
-                    decoder,
                     ssi_loss,
                     test_ssi_partitioner,
                     test_ssi_perf_transformer,

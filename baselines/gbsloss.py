@@ -363,7 +363,11 @@ class BinaryPerformanceTransformer(nn.Module):
         self.thres = thres
 
     def get_probs(self, logits):
-        return torch.softmax(logits, dim=1)
+        # Check if logits are already probabilities (between 0 and 1)
+        if torch.all(logits >= 0) and torch.all(logits <= 1):
+            return logits
+        else:
+            return torch.softmax(logits, dim=1)
 
     def discretize(self, probs):
         return torch.clamp(probs - self.thres, min=0.) / (probs - self.thres)
@@ -380,7 +384,11 @@ class BinnedPerformanceTransformer(nn.Module):
         self.scale = scale
 
     def get_probs(self, logits):
-        return torch.softmax(logits, dim=1)
+         # Check if logits are already probabilities (between 0 and 1)
+        if torch.all(logits >= 0) and torch.all(logits <= 1):
+            return logits
+        else:
+            return torch.softmax(logits, dim=1)
 
     def discretize(self, probs):
         return differentiable_ceil(self.scale * probs)
@@ -398,7 +406,11 @@ class LogOddsPerformanceTransformer(nn.Module):
         self.scale = scale
 
     def get_scores(self, logits):
-        probs = torch.softmax(logits, dim=1)
+         # Check if logits are already probabilities (between 0 and 1)
+        if torch.all(logits >= 0) and torch.all(logits <= 1):
+            probs = logits
+        else:
+            probs = torch.softmax(logits, dim=1)
 
         return torch.log(probs) - torch.log(1 - probs) + math.log(self.cls - 1)
 
@@ -422,7 +434,11 @@ class SoftHistogramPerformanceTransformer(nn.Module):
         self.centers = float(self.min) + self.delta * (torch.arange(bins).float() + 0.5)
 
     def get_probs(self, logits):
-        return torch.softmax(logits, dim=1)
+         # Check if logits are already probabilities (between 0 and 1)
+        if torch.all(logits >= 0) and torch.all(logits <= 1):
+            return logits
+        else:
+            return torch.softmax(logits, dim=1)
 
     def forward(self, logits, y):
         probs = self.get_probs(logits)[np.arange(logits.shape[0]),y]
@@ -441,6 +457,8 @@ class SSILoss(nn.Module):
         :param values: the discretized performance values, B.
         :return: SSI loss.
         """
+        #print(f"SSILoss points: {points}")
+        #print(f"SSILoss values: {values}")
 
         cs, ns = np.unique(values.detach().cpu().numpy(), return_counts=True)
         rmax = np.argmax(ns)
@@ -452,6 +470,7 @@ class SSILoss(nn.Module):
         ignore_ratio = ns[rmax] / np.sum(ns)
         # print(f"Ignore ratio: {ignore_ratio}")
         if ignore_ratio > 0.9 or ignore_ratio < 0.6:
+            # print("Extreme neighborhood detected.")
             return None, ignore_ratio
 
         weight_matrix = construct_weight_matrix(points, 4)
