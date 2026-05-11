@@ -3,7 +3,7 @@
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torch.optim import Adam
 
 from sklearn.model_selection import train_test_split
@@ -68,6 +68,8 @@ def main():
     # BinaryPerformanceTransformer_thres = settings["BinaryPerformanceTransformer_thres"]
     # SoftHistogramPerformanceTransformer_bins = settings["SoftHistogramPerformanceTransformer_bins"]
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     params = settings[dataset]["params"]
     
     task = settings[dataset]["task"]
@@ -116,11 +118,11 @@ def main():
     y_te = torch.Tensor(all_data["val_classes"]).long() # shape=(N, )
     user_te = torch.Tensor(all_data["val_users"]) # shape=(2217, )
 
-    idx_tr = np.arange(img_tr.shape[0])
-    idx_te = np.arange(img_te.shape[0])
+    idx_tr = torch.arange(img_tr.shape[0], dtype=torch.long)
+    idx_te = torch.arange(img_te.shape[0], dtype=torch.long)
 
-    train_data_zip = list(zip(idx_tr, img_tr, loc_tr, y_tr))
-    test_data_zip = list(zip(idx_te, img_te, loc_te, y_te))
+    train_data_zip = TensorDataset(idx_tr, img_tr, loc_tr, y_tr)
+    test_data_zip = TensorDataset(idx_te, img_te, loc_te, y_te)
 
     print("Check the radian of input data!", loc_tr[0])
 
