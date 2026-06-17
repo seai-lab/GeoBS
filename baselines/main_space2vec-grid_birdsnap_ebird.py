@@ -159,36 +159,38 @@ def main():
 
     # epochs_order = []
 
-    # if load_model:
-    #     model_path = f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
 
-    #     ckpt = torch.load(model_path, map_location=device)
-    #     if loc_encoder:
-    #         try:
-    #             loc_encoder.load_state_dict(ckpt["loc_encoder"])
-    #             print(">>> Loaded new version checkpoint <<<")
-    #         except KeyError:
-    #             loc_encoder.load_state_dict(ckpt["state_dict"])
-    #             print(">>> Loaded original TorchSpatial checkpoint <<<")
+    # print(f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar")
+    if load_model:
+        model_path = f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
+
+        ckpt = torch.load(model_path, map_location=device)
+        if loc_encoder:
+            try:
+                loc_encoder.load_state_dict(ckpt["loc_encoder"])
+                print(">>> Loaded new version checkpoint <<<")
+            except KeyError:
+                loc_encoder.load_state_dict(ckpt["state_dict"])
+                print(">>> Loaded original TorchSpatial checkpoint <<<")
 
         # - optimizer - 
-        # optimizer.load_state_dict(ckpt["optimizer"])
+        optimizer.load_state_dict(ckpt["optimizer"])
 
-        # # - trained_epochs - 
-        # trained_epochs = ckpt.get("epoch", 0) - 1 # Old epoch is 31 when trained for 30
-        # if trained_epochs == -1: # Not old checkpoint
-        #     trained_epochs = ckpt["trained_epochs"] # New epoch can be loaded
+        # - trained_epochs - 
+        trained_epochs = ckpt.get("epoch", 0) - 1 # Old epoch is 31 when trained for 30
+        if trained_epochs == -1: # Not old checkpoint
+            trained_epochs = ckpt["trained_epochs"] # New epoch can be loaded
 
-        # # - debiased_epochs -
-        # debiased_epochs = ckpt.get("debiased_epochs", 0) # Old: "debiased_epochs" not present, use 0; New: "debiased_epochs" present
+        # - debiased_epochs -
+        debiased_epochs = ckpt.get("debiased_epochs", 0) # Old: "debiased_epochs" not present, use 0; New: "debiased_epochs" present
 
-        # # - epochs_order - 
-        # epochs_order = ckpt.get("epochs_order", [("train", trained_epochs)]) # Old was only trained regularly, never debiased
+        # - epochs_order - 
+        epochs_order = ckpt.get("epochs_order", [("train", trained_epochs)]) # Old was only trained regularly, never debiased
 
-        # # - old_params - 
-        # old_params = ckpt.get("params", None)
+        # - old_params - 
+        old_params = ckpt.get("params", None)
 
-        # print(f"Checkpoint loaded from {model_path}; trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
+        print(f"Checkpoint loaded from {model_path}; trained for {trained_epochs} epochs, debiased for {debiased_epochs} epochs, in the order of {epochs_order}")
 
     if loc_encoder:
         loc_encoder.train()
@@ -212,7 +214,7 @@ def main():
         optimizer=optimizer,
         device=device)
     
-    # if epochs_to_train:
+    # if epochs_to_train:k
     #     trained_epochs += epochs_to_train
     #     epochs_order.append(("train", epochs_to_train))
 
@@ -246,8 +248,8 @@ def main():
     #             "debiased_epochs": debiased_epochs,
     #             "epochs_order": epochs_order,
     #             "loc_encoder": loc_encoder.state_dict(),
-    #             "optimizer": optimizer.state_dict(),
-    #         }, path)
+    #             "optmizer": optimizer.state_dict(),
+    #         }, path)i
     #     else:
     #         torch.save({
     #             "trained_epochs": trained_epochs,

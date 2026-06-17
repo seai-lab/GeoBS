@@ -1,6 +1,8 @@
 # Run this under the directory that contains TorchSpatial, not under TorchSpatial itself
 # This file is classification only
 
+import time
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -123,6 +125,16 @@ def main():
 
     train_data_zip = TensorDataset(idx_tr, img_tr, loc_tr, y_tr)
     test_data_zip = TensorDataset(idx_te, img_te, loc_te, y_te)
+    
+    # print(idx_te.shape, img_te.shape, loc_te.shape, y_te.shape)
+    # print(idx_te[1])
+    # print("------------")
+    # print(img_te[1][:])
+    # print("------------")
+    # print(loc_te[1][:])
+    # print("------------")
+    # print(y_te[1])
+    # time.sleep(1000)
 
     print("Check the radian of input data!", loc_tr[0])
 
