@@ -166,12 +166,8 @@ def main():
 
         ckpt = torch.load(model_path, map_location=device)
         if loc_encoder:
-            try:
-                loc_encoder.load_state_dict(ckpt["loc_encoder"])
-                print(">>> Loaded new version checkpoint <<<")
-            except KeyError:
-                loc_encoder.load_state_dict(ckpt["state_dict"])
-                print(">>> Loaded original TorchSpatial checkpoint <<<")
+            loc_encoder.load_state_dict(ckpt["state_dict"])
+            print(">>> Loaded original TorchSpatial checkpoint <<<")
 
         # - optimizer - 
         optimizer.load_state_dict(ckpt["optimizer"])
