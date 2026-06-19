@@ -8,6 +8,12 @@
     "epochs_to_debias": 1,
     "debias_lambda": 0.0001,
 
+    "seed": 42,
+    "deterministic": false,
+
+    "train_loss_name": "embedding_loss",
+    "train_loss_params": {},
+
     "ssi_radius": 0.01,
     "sri_radius": 0.1,
     "sri_partition_mode": "ScaleGrid",
@@ -95,9 +101,5 @@
         "train_remove_invalid": true,
         "eval_remove_invalid": true}
 }
-
-
-
-
 
 
