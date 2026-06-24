@@ -163,7 +163,7 @@ def main():
     # print(f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar")
     if load_model:
         # model_path = f"TorchSpatial/pre_trained_models/{loc_encoder_name.lower()}/model_{dataset}_{meta_type}_{loc_encoder_name}_trained{trained_epochs}_debiased{debiased_epochs}.pth.tar"
-        model_path = "/home/ec2-user/GeoBS/TorchSpatial_checkpoint/data/model_birdsnap_ebird_meta_Space2Vec-grid_inception_v3_0.0100_128_0.1000000_360.000_1_512_leakyrelu.pth.tar"   
+        model_path = "/home/ec2-user/GeoBS/TorchSpatial_checkpoint/data/model_nabirds_ebird_meta_Space2Vec-grid_inception_v3_0.0100_32_0.1000000_360.000_1_256_BATCH4096_leakyrelu.pth.tar"   
         ckpt = torch.load(model_path, map_location=device)
         if loc_encoder:
             loc_encoder.load_state_dict(ckpt["state_dict"])

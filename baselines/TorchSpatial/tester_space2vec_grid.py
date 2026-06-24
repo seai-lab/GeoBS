@@ -46,7 +46,10 @@ def test(dataloader,
             loc_embedding = torch.ones_like(class_probas_based_on_image).float()
             if valid_loc_mask.any():
                 loc_embedding[valid_loc_mask] = loc_encoder(loc_b[valid_loc_mask])
-            class_probas_based_on_loc = torch.sigmoid(loc_embedding) # # Use Sigmoid not Softmax because each class's proba is independent for the location prior; two or more species can both be present at the same locations
+            # FIX: loc_encoder.forward() already applies sigmoid internally (see models.py line 480)
+            # Applying sigmoid again here causes "double sigmoid" which compresses probabilities to ~0.5
+            # Original comment was misleading - we DO use sigmoid, but it's inside loc_encoder, not here
+            class_probas_based_on_loc = loc_embedding
         else:
             class_probas_based_on_loc = loc_embedding = torch.ones_like(class_probas_based_on_image).float()
         

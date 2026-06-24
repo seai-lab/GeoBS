@@ -1,5 +1,5 @@
 {
-    "dataset": "birdsnap",
+    "dataset": "nabirds",
     "eval_split": "test",
     "load_model": true,
     "trained_epochs": 0,
