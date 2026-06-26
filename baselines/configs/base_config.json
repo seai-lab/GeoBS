@@ -1,0 +1,113 @@
+{
+    "comment": "Base configuration shared by all experiments",
+
+    "eval_split": "test",
+    "eval_split_overrides": {
+        "inat_2017": "val",
+        "inat_2018": "val",
+        "fmow": "val"
+    },
+    "load_model": true,
+    "trained_epochs": 0,
+    "debiased_epochs": 0,
+    "epochs_to_train": 0,
+    "epochs_to_debias": 0,
+
+    "class_and_user_emb_dims": 256,
+    "batch_size": 32,
+    "batch_count_print_avg_loss": 30,
+    "activation_func": "ReLU",
+
+    "optimizer_lr": 0.01,
+    "optimizer_weight_decay": 0.98,
+
+    "partition_k": 400,
+    "BinaryPerformanceTransformer_thres": 0.5,
+    "SoftHistogramPerformanceTransformer_bins": 4,
+
+    "datasets": {
+        "birdsnap": {
+            "params": {
+                "dataset": "birdsnap",
+                "meta_type": "ebird_meta",
+                "regress_dataset": [],
+                "rand_sample_weight": 0.3,
+                "train_sample_ratio": 1.0
+            },
+            "task": "Classification",
+            "img_dim": 2048,
+            "coord_dim": 2,
+            "num_classes": 500,
+            "train_remove_invalid": true,
+            "eval_remove_invalid": true
+        },
+        "nabirds": {
+            "params": {
+                "dataset": "nabirds",
+                "meta_type": "ebird_meta",
+                "regress_dataset": []
+            },
+            "task": "Classification",
+            "img_dim": 2048,
+            "coord_dim": 2,
+            "num_classes": 555,
+            "train_remove_invalid": true,
+            "eval_remove_invalid": true
+        },
+        "inat_2017": {
+            "params": {
+                "dataset": "inat_2017",
+                "inat2018_resolution": "standard",
+                "regress_dataset": []
+            },
+            "task": "Classification",
+            "img_dim": 2048,
+            "coord_dim": 2,
+            "num_classes": 5089,
+            "train_remove_invalid": true,
+            "eval_remove_invalid": true
+        },
+        "inat_2018": {
+            "params": {
+                "dataset": "inat_2018",
+                "load_img": true,
+                "cnn_pred_type": "full",
+                "cnn_model": "inception_v3",
+                "inat2018_resolution": "standard",
+                "regress_dataset": []
+            },
+            "task": "Classification",
+            "img_dim": 2048,
+            "coord_dim": 2,
+            "num_classes": 8142,
+            "train_remove_invalid": true,
+            "eval_remove_invalid": true
+        },
+        "fmow": {
+            "params": {
+                "dataset": "fmow",
+                "cnn_pred_type": "full",
+                "meta_type": "orig_meta",
+                "regress_dataset": []
+            },
+            "task": "Classification",
+            "img_dim": 2048,
+            "coord_dim": 2,
+            "num_classes": 62,
+            "train_remove_invalid": true,
+            "eval_remove_invalid": true
+        },
+        "yfcc": {
+            "params": {
+                "dataset": "yfcc",
+                "regress_dataset": []
+            },
+            "task": "Classification",
+            "img_dim": 2048,
+            "coord_dim": 2,
+            "num_classes": 100,
+            "train_remove_invalid": true,
+            "eval_remove_invalid": true
+        }
+    }
+}

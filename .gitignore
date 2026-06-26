@@ -23,3 +23,4 @@ main_ssi.pdf
 rename_ckpts.ipynb
 dataloading.ipynb
 TorchSpatialForReproduction/
+settings.json

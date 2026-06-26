@@ -1,0 +1,7 @@
+{
+    "comment": "No prior baseline (image-only)",
+
+    "loc_encoder_name": "no_prior",
+    "loc_encoder_params": null,
+    "load_model": false
+}

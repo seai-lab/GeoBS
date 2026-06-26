@@ -344,6 +344,26 @@ def load_dataset(
             else:
                 raise Exception(f"Unknown inat2018_resolution flag")
 
+        # Load train predictions if requested
+        if load_cnn_predictions:
+            if params["cnn_pred_type"] == "full":
+                train_preds = np.load(
+                    data_dir + "feature_moco/fmow_train_preds.npy"
+                )
+            elif params["cnn_pred_type"] == "fewshot":
+                train_preds_file = make_model_res_file(
+                    data_dir=data_dir + "fewshot/",
+                    dataset="fmow",
+                    eval_split="train",
+                    res_type="preds",
+                    sample_ratio=params.get("train_sample_ratio", 1.0),
+                )
+                train_preds = np.load(train_preds_file)
+            else:
+                raise Exception(
+                    f"Unrecognized cnn_pred_type -> {params['cnn_pred_type']}"
+                )
+
         if load_cnn_features_train:
             if params["inat2018_resolution"] == "pretrain":
                 train_feats = np.load(
@@ -872,8 +892,8 @@ def load_inat_data(
     if load_img:
         return (
             np.array(locs).astype(np.float32),
-            np.array(classes).astype(np.int),
-            np.array(users).astype(np.int),
+            np.array(classes).astype(int),
+            np.array(users).astype(int),
             np.array(dates).astype(np.float32),
             np.array(keep_inds),
             np.array(imgs),
