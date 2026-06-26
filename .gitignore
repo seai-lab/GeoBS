@@ -24,3 +24,4 @@ rename_ckpts.ipynb
 dataloading.ipynb
 TorchSpatialForReproduction/
 settings.json
+eval_results/
