@@ -1,21 +1,21 @@
 {
-    "comment": "Space2Vec-grid encoder configuration",
+    "comment": "Space2Vec-theory encoder configuration",
 
-    "loc_encoder_name": "Space2Vec-grid",
+    "loc_encoder_name": "Space2Vec-theory",
     "loc_encoder_params": {
         "spa_embed_dim": 256,
         "coord_dim": 2,
-        "frequency_num": 128,
-        "max_radius": 360.0,
-        "min_radius": 0.1,
+        "frequency_num": 16,
+        "max_radius": 10000,
+        "min_radius": 10,
         "freq_init": "geometric",
         "device": "cuda",
         "ffn_act": "leakyrelu",
         "ffn_num_hidden_layers": 1,
         "ffn_dropout_rate": 0.5,
-        "ffn_hidden_dim": 512,
+        "ffn_hidden_dim": 256,
         "ffn_use_layernormalize": true,
         "ffn_skip_connection": true,
-        "ffn_context_str": "GridCellSpatialRelationEncoder"
+        "ffn_context_str": "TheoryGridCellSpatialRelationEncoder"
     }
 }
