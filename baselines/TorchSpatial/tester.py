@@ -59,6 +59,9 @@ def test(dataloader, loc_encoder=None):
         - For no_prior baseline, simply pass loc_encoder=None
     """
 
+    # Detect device from model
+    device = next(loc_encoder.parameters()).device if loc_encoder else torch.device('cpu')
+
     total = 0
     correct_top1 = 0
     correct_top3 = 0
@@ -66,6 +69,10 @@ def test(dataloader, loc_encoder=None):
     rows = []
 
     for idx_b, img_b, loc_b, y_b in dataloader:
+        # Move data to model's device
+        img_b = img_b.to(device)
+        loc_b = loc_b.to(device)
+        y_b = y_b.to(device)
         # CNN predictions (from pre-computed features)
         class_probas_based_on_image = img_b
 

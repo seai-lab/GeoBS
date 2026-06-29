@@ -25,3 +25,4 @@ dataloading.ipynb
 TorchSpatialForReproduction/
 settings.json
 eval_results/
+evaluation_results/
