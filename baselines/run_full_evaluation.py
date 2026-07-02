@@ -36,6 +36,7 @@ ENCODER_ORDER = [
     'space2vec_theory',
     'nerf',
     'sphere2vec_sphereC',
+    'siren'
 ]
 
 # Column order (datasets) - from left to right
