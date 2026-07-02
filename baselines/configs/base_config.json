@@ -57,7 +57,7 @@
         "inat_2017": {
             "params": {
                 "dataset": "inat_2017",
-                "inat2018_resolution": "standard",
+                "inat2017_resolution": "standard",
                 "regress_dataset": []
             },
             "task": "Classification",

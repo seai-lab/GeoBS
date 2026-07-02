@@ -35,6 +35,7 @@ ENCODER_ORDER = [
     'space2vec_grid',
     'space2vec_theory',
     'nerf',
+    'sphere2vec_sphereC',
 ]
 
 # Column order (datasets) - from left to right
@@ -242,20 +243,24 @@ def print_table(df, title):
 
 
 def save_results(top1_df, top3_df, mrr_df, output_dir, timestamp=None):
-    """Save results to files."""
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    """Save results to files in a timestamped subdirectory."""
+    base_output_path = Path(output_dir)
+    base_output_path.mkdir(parents=True, exist_ok=True)
 
     if timestamp is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Save CSV files
-    top1_df.to_csv(output_path / f'top1_accuracy_{timestamp}.csv', index=False)
-    top3_df.to_csv(output_path / f'top3_accuracy_{timestamp}.csv', index=False)
-    mrr_df.to_csv(output_path / f'mrr_{timestamp}.csv', index=False)
+    # Create timestamped subdirectory
+    run_dir = base_output_path / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save CSV files (without timestamp in filename since folder is timestamped)
+    top1_df.to_csv(run_dir / 'top1_accuracy.csv', index=False)
+    top3_df.to_csv(run_dir / 'top3_accuracy.csv', index=False)
+    mrr_df.to_csv(run_dir / 'mrr.csv', index=False)
 
     # Save Markdown file with all three tables
-    md_file = output_path / f'results_{timestamp}.md'
+    md_file = run_dir / 'results.md'
     with open(md_file, 'w') as f:
         f.write(f"# GeoBS Evaluation Results\n\n")
         f.write(f"**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
@@ -272,13 +277,13 @@ def save_results(top1_df, top3_df, mrr_df, output_dir, timestamp=None):
         f.write(mrr_df.to_markdown(index=False))
         f.write(f"\n")
 
-    print(f"\n📁 Results saved to: {output_path}/")
-    print(f"   - top1_accuracy_{timestamp}.csv")
-    print(f"   - top3_accuracy_{timestamp}.csv")
-    print(f"   - mrr_{timestamp}.csv")
-    print(f"   - results_{timestamp}.md")
+    print(f"\n📁 Results saved to: {run_dir}/")
+    print(f"   - top1_accuracy.csv")
+    print(f"   - top3_accuracy.csv")
+    print(f"   - mrr.csv")
+    print(f"   - results.md")
 
-    return output_path
+    return run_dir
 
 
 def main():

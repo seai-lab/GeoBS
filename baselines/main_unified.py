@@ -165,6 +165,16 @@ def auto_detect_checkpoint(dataset: str, encoder: str, checkpoint_dir: str = Non
         "xyz": "xyz",
         "nerf": "NeRF",
         "sphere2vec": "Sphere2Vec",
+        "sphere2vec_spherec": "Sphere2Vec-sphereC",
+        "sphere2vec_spherem": "Sphere2Vec-sphereM",
+        "sphere2vec_spherem+": "Sphere2Vec-sphereM+",
+        "sphere2vec_dfs": "Sphere2Vec-dfs",
+        "tile_ffn": "tile_ffn",
+        "wrap": "wrap",
+        "rbf": "rbf",
+        "rff": "rff",
+        "siren": "spherical_harmonics",
+        "siren(sh)": "spherical_harmonics",
     }
 
     encoder_display = encoder_name_map.get(encoder_lower, encoder)
@@ -271,20 +281,38 @@ def main():
         config = update_config_from_checkpoint(config, checkpoint_path)
         if 'loc_encoder_params' in config and config['loc_encoder_params']:
             params = config['loc_encoder_params']
-            print(f"   frequency_num: {params.get('frequency_num')}")
+
+            # Print appropriate parameter based on encoder type
+            if 'siren' in config['loc_encoder_name'].lower() or 'spherical' in config['loc_encoder_name'].lower():
+                print(f"   legendre_poly_num: {params.get('legendre_poly_num')}")
+            else:
+                print(f"   frequency_num: {params.get('frequency_num')}")
+
             print(f"   hidden_dim: {params.get('ffn_hidden_dim')}")
             print(f"   num_layers: {params.get('ffn_num_hidden_layers')}")
+
+            if 'sphere2vec' in config['loc_encoder_name'].lower():
+                print(f"   min_radius: {params.get('min_radius')}")
+                print(f"   max_radius: {params.get('max_radius')}")
     else:
         checkpoint_path = None
         print(f"   Mode: No prior baseline (image-only)")
 
     # Load data
     print(f"\n📊 Loading dataset...")
+
+    # For no_prior baseline, include all samples even without valid locations
+    # For location encoders, only include samples with valid locations
+    eval_remove_invalid = dataset_config["eval_remove_invalid"]
+    if config["loc_encoder_name"] == "no_prior":
+        eval_remove_invalid = False
+        print(f"   Note: no_prior mode - including all samples (even without locations)")
+
     all_data = data_import.load_dataset(
         params=dataset_params,
         eval_split=config["eval_split"],
         train_remove_invalid=dataset_config["train_remove_invalid"],
-        eval_remove_invalid=dataset_config["eval_remove_invalid"],
+        eval_remove_invalid=eval_remove_invalid,
         load_cnn_predictions=True,
         load_cnn_features=False,
         load_cnn_features_train=False

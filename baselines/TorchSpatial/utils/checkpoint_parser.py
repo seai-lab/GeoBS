@@ -52,9 +52,23 @@ def parse_checkpoint_filename(checkpoint_path: str) -> Dict[str, Any]:
     # Find encoder name (may contain hyphens like "Space2Vec-grid")
     encoder_idx = None
     encoder_name = None
-    known_encoders = ['Space2Vec-grid', 'Space2Vec-theory', 'NeRF', 'xyz', 'Sphere2Vec', 'wrap', 'rbf', 'rff', 'tile']
+    known_encoders = [
+        'Space2Vec-grid', 'Space2Vec-theory',
+        'Sphere2Vec-sphereC', 'Sphere2Vec-sphereM', 'Sphere2Vec-sphereM+', 'Sphere2Vec-dfs',
+        'NeRF', 'xyz', 'Sphere2Vec',
+        'spherical_harmonics',
+        'wrap', 'rbf', 'rff', 'tile'
+    ]
 
+    # Special handling for multi-part encoder names (e.g., "spherical_harmonics")
     for i, part in enumerate(parts):
+        # Check for "spherical_harmonics" (two parts)
+        if i < len(parts) - 1 and part == 'spherical' and parts[i+1] == 'harmonics':
+            encoder_name = 'spherical_harmonics'
+            encoder_idx = i
+            break
+
+        # Standard single-part matching
         for enc in known_encoders:
             if enc.lower() in part.lower():
                 # Reconstruct encoder name (may span multiple parts due to hyphen)
@@ -85,7 +99,12 @@ def parse_checkpoint_filename(checkpoint_path: str) -> Dict[str, Any]:
         result['meta_type'] = '_'.join(parts[2:encoder_idx])
 
     # CNN model follows encoder
-    cnn_idx = encoder_idx + 1
+    # For multi-part encoders like "spherical_harmonics", skip the second part
+    if encoder_name == 'spherical_harmonics':
+        cnn_idx = encoder_idx + 2  # Skip both "spherical" and "harmonics"
+    else:
+        cnn_idx = encoder_idx + 1
+
     if cnn_idx < len(parts) and 'inception' in parts[cnn_idx].lower():
         result['cnn'] = '_'.join(parts[cnn_idx:cnn_idx+2]) if cnn_idx+1 < len(parts) else parts[cnn_idx]
         cnn_idx += 1
@@ -127,7 +146,20 @@ def parse_checkpoint_filename(checkpoint_path: str) -> Dict[str, Any]:
     # DEBUG: Uncomment to see parsed values
     # print(f"DEBUG: encoder_name={encoder_name}, numeric_parts={numeric_parts}, len={len(numeric_parts)}")
 
-    if encoder_name and 'nerf' in encoder_name.lower():
+    if encoder_name and 'spherical' in encoder_name.lower():
+        # Spherical Harmonics (SIREN) format: lr, frequency_num, min_param, num_layers, hidden_dim
+        # Example: 0.0050_16_0.0001000_3_512 (no max_radius)
+        if len(numeric_parts) >= 5:
+            result['lr'] = numeric_parts[0]
+            result['frequency_num'] = int(numeric_parts[1])
+            # numeric_parts[2] is a threshold parameter, skip
+            result['num_layers'] = int(numeric_parts[3])
+            result['hidden_dim'] = int(numeric_parts[4])
+        elif len(numeric_parts) >= 4:
+            result['frequency_num'] = int(numeric_parts[0])
+            result['num_layers'] = int(numeric_parts[2])
+            result['hidden_dim'] = int(numeric_parts[3])
+    elif encoder_name and 'nerf' in encoder_name.lower():
         # NeRF format: lr, frequency_num, ?, num_layers, hidden_dim
         # Example: 0.0100_64_0.1000000_2_512
         if len(numeric_parts) >= 5:
@@ -138,6 +170,21 @@ def parse_checkpoint_filename(checkpoint_path: str) -> Dict[str, Any]:
             result['hidden_dim'] = int(numeric_parts[4])
         elif len(numeric_parts) >= 4:
             result['frequency_num'] = int(numeric_parts[0])
+            result['num_layers'] = int(numeric_parts[2])
+            result['hidden_dim'] = int(numeric_parts[3])
+    elif encoder_name and 'sphere2vec' in encoder_name.lower():
+        # Sphere2Vec format: lr, frequency_num, min_radius, num_layers, hidden_dim
+        # Example: 0.0010_64_0.0010000_1_512 (no max_radius)
+        if len(numeric_parts) >= 5:
+            result['lr'] = numeric_parts[0]
+            result['frequency_num'] = int(numeric_parts[1])
+            result['min_radius'] = numeric_parts[2]
+            result['num_layers'] = int(numeric_parts[3])
+            result['hidden_dim'] = int(numeric_parts[4])
+        elif len(numeric_parts) >= 4:
+            # Sometimes lr might be missing
+            result['frequency_num'] = int(numeric_parts[0])
+            result['min_radius'] = numeric_parts[1]
             result['num_layers'] = int(numeric_parts[2])
             result['hidden_dim'] = int(numeric_parts[3])
     else:
@@ -163,19 +210,20 @@ def parse_checkpoint_filename(checkpoint_path: str) -> Dict[str, Any]:
 
 def get_frequency_num_from_weights(checkpoint_path: str, encoder_name: str) -> Optional[int]:
     """
-    Extract frequency_num directly from checkpoint weights.
+    Extract frequency_num (or legendre_poly_num for SIREN) directly from checkpoint weights.
 
-    This is more reliable than parsing from filename for some encoders like NeRF.
+    This is more reliable than parsing from filename for some encoders.
 
     Args:
         checkpoint_path: Path to checkpoint file
         encoder_name: Name of encoder (to determine layer structure)
 
     Returns:
-        frequency_num if found, None otherwise
+        frequency_num (or legendre_poly_num) if found, None otherwise
     """
     try:
         import torch
+        import math
         checkpoint = torch.load(checkpoint_path, map_location='cpu')
         weights = checkpoint.get('state_dict', {})
 
@@ -183,14 +231,24 @@ def get_frequency_num_from_weights(checkpoint_path: str, encoder_name: str) -> O
         # Position encoder output = coord_dim * frequency_num * factor
         # For NeRF: factor = 3 (x, sin, cos)
         # For Space2Vec: factor = 4 (sin_x, cos_x, sin_y, cos_y) for 2D
+        # For SIREN: input_dim = legendre_poly_num^2
         for key in weights.keys():
             if 'spa_enc.ffn.layers.0.linear.weight' in key:
                 input_dim = weights[key].shape[1]
 
-                if 'nerf' in encoder_name.lower():
+                if 'siren' in encoder_name.lower() or 'spherical' in encoder_name.lower():
+                    # Spherical Harmonics: input_dim = legendre_poly_num^2
+                    legendre_poly_num = int(math.sqrt(input_dim))
+                    return legendre_poly_num
+                elif 'nerf' in encoder_name.lower():
                     # NeRF: input_dim = coord_dim * frequency_num * 3
                     # Assuming coord_dim = 2
                     frequency_num = input_dim // 6  # 2 * 3
+                    return int(frequency_num)
+                elif 'sphere2vec' in encoder_name.lower():
+                    # Sphere2Vec: input_dim = frequency_num * 3
+                    # Uses 3D spherical coordinates (x, y, z) directly
+                    frequency_num = input_dim // 3
                     return int(frequency_num)
                 elif 'space2vec' in encoder_name.lower():
                     # Space2Vec-grid: more complex, skip for now
@@ -221,13 +279,26 @@ def update_config_from_checkpoint(config: Dict, checkpoint_path: str) -> Dict:
         params = config['loc_encoder_params']
 
         # For frequency_num, prefer extracting from weights (more reliable)
+        # EXCEPT for Sphere2Vec, where filename parsing works better
         encoder_name = config.get('loc_encoder_name', '')
-        freq_from_weights = get_frequency_num_from_weights(checkpoint_path, encoder_name)
 
-        if freq_from_weights and 'frequency_num' in params:
-            params['frequency_num'] = freq_from_weights
-        elif 'frequency_num' in parsed and 'frequency_num' in params:
-            params['frequency_num'] = parsed['frequency_num']
+        if 'sphere2vec' in encoder_name.lower():
+            # For Sphere2Vec, use filename parsing directly (more reliable)
+            if 'frequency_num' in parsed and 'frequency_num' in params:
+                params['frequency_num'] = parsed['frequency_num']
+        elif 'siren' in encoder_name.lower() or 'spherical' in encoder_name.lower():
+            # For SIREN/Spherical Harmonics, extract legendre_poly_num from weights
+            # (filename parsing doesn't work - the number in filename is NOT legendre_poly_num)
+            legendre_from_weights = get_frequency_num_from_weights(checkpoint_path, encoder_name)
+            if legendre_from_weights and 'legendre_poly_num' in params:
+                params['legendre_poly_num'] = legendre_from_weights
+        else:
+            # For other encoders, prefer weights extraction
+            freq_from_weights = get_frequency_num_from_weights(checkpoint_path, encoder_name)
+            if freq_from_weights and 'frequency_num' in params:
+                params['frequency_num'] = freq_from_weights
+            elif 'frequency_num' in parsed and 'frequency_num' in params:
+                params['frequency_num'] = parsed['frequency_num']
         if 'min_radius' in parsed and 'min_radius' in params:
             params['min_radius'] = parsed['min_radius']
         if 'max_radius' in parsed and 'max_radius' in params:

@@ -1,0 +1,21 @@
+{
+    "comment": "Sphere2Vec-sphereC encoder configuration",
+
+    "loc_encoder_name": "Sphere2Vec-sphereC",
+    "loc_encoder_params": {
+        "spa_embed_dim": 256,
+        "coord_dim": 2,
+        "frequency_num": 16,
+        "max_radius": 1,
+        "min_radius": 0.001,
+        "freq_init": "geometric",
+        "device": "cuda",
+        "ffn_act": "relu",
+        "ffn_num_hidden_layers": 1,
+        "ffn_dropout_rate": 0.5,
+        "ffn_hidden_dim": 256,
+        "ffn_use_layernormalize": true,
+        "ffn_skip_connection": true,
+        "ffn_context_str": "SphereSpatialRelationEncoder"
+    }
+}
